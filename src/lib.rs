@@ -1,5 +1,5 @@
 pub mod api;
-pub mod http_solver;
+pub mod models;
 pub mod ratio_as_decimal;
 pub mod solve;
 pub mod tracing_helper;

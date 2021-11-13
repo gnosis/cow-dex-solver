@@ -1,4 +1,4 @@
-use crate::http_solver::model::BatchAuctionModel;
+use crate::models::batch_auction_model::BatchAuctionModel;
 use crate::solve::solve;
 use anyhow::Result;
 use hex::{FromHex, FromHexError};
@@ -70,7 +70,7 @@ pub fn convert_get_solve_error_to_reply(err: anyhow::Error) -> WithStatus<Json> 
 pub fn get_solve() -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     get_solve_request().and_then(move |model| async move {
         tracing::info!("will try solve model; {:?}", model);
-        let result = solve(model);
+        let result = solve::solve(model);
         Result::<_, Infallible>::Ok(get_solve_response(result))
     })
 }

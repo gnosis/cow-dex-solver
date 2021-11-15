@@ -1,4 +1,5 @@
 use crate::models::batch_auction_model::BatchAuctionModel;
+use crate::models::batch_auction_model::SettledBatchAuctionModel;
 use crate::solve::solve;
 use anyhow::Result;
 use hex::{FromHex, FromHexError};
@@ -26,7 +27,6 @@ impl FromStr for H160Wrapper {
         Ok(H160Wrapper(H160(FromHex::from_hex(s)?)))
     }
 }
-
 pub fn get_solve_request() -> impl Filter<Extract = (BatchAuctionModel,), Error = Rejection> + Clone
 {
     warp::path!("solve")
@@ -40,8 +40,7 @@ fn extract_payload<T: DeserializeOwned + Send>(
     // (rejecting huge payloads)...
     warp::body::content_length_limit(MAX_JSON_BODY_PAYLOAD).and(warp::body::json())
 }
-
-pub fn get_solve_response(result: Result<bool>) -> WithStatus<Json> {
+pub fn get_solve_response(result: Result<SettledBatchAuctionModel>) -> WithStatus<Json> {
     match result {
         Ok(solve) => reply::with_status(reply::json(&solve), StatusCode::OK),
         Err(err) => convert_get_solve_error_to_reply(err),
@@ -69,8 +68,7 @@ pub fn convert_get_solve_error_to_reply(err: anyhow::Error) -> WithStatus<Json> 
 
 pub fn get_solve() -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     get_solve_request().and_then(move |model| async move {
-        tracing::info!("will try solve model; {:?}", model);
-        let result = solve::solve(model);
+        let result = solve::solve(model).await;
         Result::<_, Infallible>::Ok(get_solve_response(result))
     })
 }

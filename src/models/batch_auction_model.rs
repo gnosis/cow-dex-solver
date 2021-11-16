@@ -463,6 +463,9 @@ mod tests {
           "metadata": {
             "environment": "Such Meta",
           },
+          "time_limit": null,
+          "max_nr_exec_orders": null,
+          "instance_name": null,
         });
         assert_eq!(result, expected);
     }

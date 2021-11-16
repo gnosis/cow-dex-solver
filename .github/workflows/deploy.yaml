@@ -7,7 +7,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      DOCKERHUB_PROJECT: gp-data
+      DOCKERHUB_PROJECT: cowdexsolver
       DOCKER_NAME: ${{ secrets.DOCKER_NAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
     steps:

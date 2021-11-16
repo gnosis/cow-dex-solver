@@ -134,11 +134,7 @@ pub async fn solve(
             value: 0.into(),
             call_data: ethcontract::Bytes(calldata),
         };
-        if let Some(interaction_data) = &mut solution.interaction_data {
-            interaction_data.push(interaction_item);
-        } else {
-            solution.interaction_data = Some(vec![interaction_item]);
-        }
+        solution.interaction_data.push(interaction_item);
 
         // put swap tx data into settled_batch_auction
         let interaction_item = InteractionData {
@@ -146,11 +142,7 @@ pub async fn solve(
             value: swap.value,
             call_data: ethcontract::Bytes(swap.data.0),
         };
-        if let Some(interaction_data) = &mut solution.interaction_data {
-            interaction_data.push(interaction_item);
-        } else {
-            solution.interaction_data = Some(vec![interaction_item]);
-        }
+        solution.interaction_data.push(interaction_item);
 
         // Sort swap_results in such a way that the next pop contains a token already processed in the clearing prices, if there exists one.
         swap_results.sort_by(|a, b| {

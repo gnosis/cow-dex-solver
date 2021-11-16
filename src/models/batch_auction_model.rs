@@ -148,7 +148,7 @@ pub struct SettledBatchAuctionModel {
     pub ref_token: Option<H160>,
     #[serde_as(as = "HashMap<_, DecimalU256>")]
     pub prices: HashMap<H160, U256>,
-    pub interaction_data: Option<Vec<InteractionData>>,
+    pub interaction_data: Vec<InteractionData>,
 }
 
 impl SettledBatchAuctionModel {

@@ -1,7 +1,8 @@
-use crate::ratio_as_decimal;
-use crate::u256_decimal::{self, DecimalU256};
-use ethcontract::H160;
+use crate::utils::ratio_as_decimal;
+use crate::utils::u256_decimal::{self, DecimalU256};
+use ethcontract::Bytes;
 use num::BigRational;
+use primitive_types::H160;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -13,6 +14,9 @@ pub struct BatchAuctionModel {
     pub orders: BTreeMap<usize, OrderModel>,
     pub amms: BTreeMap<usize, AmmModel>,
     pub metadata: Option<MetadataModel>,
+    pub instance_name: Option<String>,
+    pub time_limit: Option<u64>,
+    pub max_nr_exec_orders: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -128,7 +132,15 @@ pub struct FeeModel {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InteractionData {
+    pub target: H160,
+    pub value: U256,
+    pub call_data: Bytes<Vec<u8>>,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Default, Serialize)]
 pub struct SettledBatchAuctionModel {
     pub orders: HashMap<usize, ExecutedOrderModel>,
     #[serde(default)]
@@ -136,6 +148,7 @@ pub struct SettledBatchAuctionModel {
     pub ref_token: Option<H160>,
     #[serde_as(as = "HashMap<_, DecimalU256>")]
     pub prices: HashMap<H160, U256>,
+    pub interaction_data: Option<Vec<InteractionData>>,
 }
 
 impl SettledBatchAuctionModel {
@@ -154,7 +167,7 @@ pub struct MetadataModel {
     pub environment: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ExecutedOrderModel {
     #[serde(with = "u256_decimal")]
     pub exec_sell_amount: U256,
@@ -162,13 +175,13 @@ pub struct ExecutedOrderModel {
     pub exec_buy_amount: U256,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UpdatedAmmModel {
     /// We ignore additional incoming amm fields we don't need.
     pub execution: Vec<ExecutedAmmModel>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ExecutedAmmModel {
     pub sell_token: H160,
     pub buy_token: H160,
@@ -176,9 +189,6 @@ pub struct ExecutedAmmModel {
     pub exec_sell_amount: U256,
     #[serde(with = "u256_decimal")]
     pub exec_buy_amount: U256,
-    /// The exec plan is allowed to be optional because the http solver isn't always
-    /// able to determine and order of execution. That is, solver may have a solution
-    /// which it wants to share with the driver even if it couldn't derive an execution plan.
     pub exec_plan: Option<ExecutionPlanCoordinatesModel>,
 }
 
@@ -194,7 +204,7 @@ impl UpdatedAmmModel {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ExecutionPlanCoordinatesModel {
     pub sequence: u32,
     pub position: u32,

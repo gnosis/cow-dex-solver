@@ -1,9 +1,8 @@
 pub mod api;
 pub mod models;
-pub mod ratio_as_decimal;
 pub mod solve;
 pub mod tracing_helper;
-pub mod u256_decimal;
+pub mod utils;
 extern crate serde_derive;
 
 use std::net::SocketAddr;

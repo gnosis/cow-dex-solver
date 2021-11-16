@@ -8,8 +8,7 @@ pub fn handle_all_routes() -> impl Filter<Extract = (impl Reply,), Error = Rejec
         .allow_any_origin()
         .allow_methods(vec!["GET", "POST", "DELETE", "OPTIONS", "PUT", "PATCH"])
         .allow_headers(vec!["Origin", "Content-Type", "X-Auth-Token", "X-AppId"]);
-    let api_routes = warp::path!("api" / "v1" / ..).and(solve);
-    api_routes.recover(handle_rejection).with(cors)
+    solve.recover(handle_rejection).with(cors)
 }
 // We turn Rejection into Reply to workaround warp not setting CORS headers on rejections.
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {

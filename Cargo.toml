@@ -17,7 +17,7 @@ path = "src/main.rs"
 anyhow = "1.0.43"
 chrono = { version = "0.4.19", features = ["serde"] }
 hex = "0.4.3"
-primitive-types = { version = "0.10.1", features = ["serde"] }
+primitive-types = { version = "0.9", features = ["serde"] }
 serde = { version = "1.0.104", features = ["derive"] }
 tokio = { version = "1.9", features = ["macros", "rt-multi-thread", "sync", "time"] }
 serde_derive = "1.0.127"
@@ -39,3 +39,12 @@ num = "0.4.0"
 bigdecimal = "0.3.0"
 num-bigint = "0.4.3"
 maplit = "1.0.2"
+secp256k1 = "0.20.3"
+derivative = "2.2.0"
+web3 = "0.17.0"
+enum-utils = "0.1.2"
+thiserror = "1.0.30"
+ethabi = "15.0.0"
+lazy_static = "1.4.0"
+strum_macros = "0.22.0"
+async-trait = "0.1.51"

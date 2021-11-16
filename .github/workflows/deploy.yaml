@@ -1,0 +1,15 @@
+name: deploy
+on:
+  push:
+    branches: [main]
+    tags: [v*]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_PROJECT: gp-data
+      DOCKER_NAME: ${{ secrets.DOCKER_NAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v2
+      - run: docker/deploy.sh ${GITHUB_REF#refs/*/}

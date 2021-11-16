@@ -32,7 +32,7 @@ pub async fn solve(
 
     let mut orders: Vec<(usize, OrderModel)> = orders.into_iter().map(|(i, y)| (i, y)).collect();
     // For simplicity, only solve for up to 5 orders
-    orders.truncate(5);
+    orders.truncate(20);
 
     // Step1: get splitted trade amounts per tokenpair for each order via paraswap dex-ag
     let paraswap_futures = orders.iter().map(|(i, order)| async move {
@@ -53,12 +53,9 @@ pub async fn solve(
     let (matched_orders, single_trade_results): MachtedOrderBracket =
         join_all(paraswap_futures).await.into_iter().unzip();
     let matched_orders: Vec<(usize, OrderModel)> = matched_orders.into_iter().flatten().collect();
-    println!(" matched_orders {:?}", matched_orders);
-    println!(" single_trade_results {:?}", single_trade_results);
 
     let single_trade_results = single_trade_results.into_iter().flatten().collect();
     let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
-    println!(" splitted_trade_amounts {:?}", splitted_trade_amounts);
     for (pair, entry_amouts) in &splitted_trade_amounts {
         tracing::debug!(
             " Before cow merge: trade on pair {:?} with values {:?}",
@@ -69,7 +66,6 @@ pub async fn solve(
 
     // 2nd step: Removing obvious cow volume from splitted traded amounts, by matching opposite volume
     let updated_traded_amounts = get_trade_amounts_without_cow_volumes(&splitted_trade_amounts)?;
-    println!(" updated_traded_amounts {:?}", updated_traded_amounts);
 
     for (pair, entry_amouts) in &updated_traded_amounts {
         tracing::debug!(
@@ -160,6 +156,7 @@ pub async fn solve(
             },
         );
     }
+    tracing::info!("Found solution: {:?}", solution);
     Ok(solution)
 }
 

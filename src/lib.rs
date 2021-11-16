@@ -10,5 +10,6 @@ use tokio::{task, task::JoinHandle};
 
 pub fn serve_task(address: SocketAddr) -> JoinHandle<()> {
     let filter = api::handle_all_routes();
+    tracing::info!(%address, "serving api");
     task::spawn(warp::serve(filter).bind(address))
 }

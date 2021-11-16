@@ -73,7 +73,6 @@ impl ParaswapApi for DefaultParaswapApi {
     async fn get_full_price_info(&self, query: PriceQuery) -> Result<Root> {
         let url = query.into_url(&self.partner);
         tracing::debug!("Querying Paraswap API (price) for url {}", url);
-        println!("Querying Paraswap API (price) for url {}", url);
 
         let response_text = self
             .client
@@ -85,7 +84,6 @@ impl ParaswapApi for DefaultParaswapApi {
             .await
             .map_err(ParaswapResponseError::TextFetch)?;
         tracing::debug!("Response from Paraswap API (price): {}", response_text);
-        println!("Response from Paraswap API (price): {}", response_text);
 
         let raw_response = serde_json::from_str::<Root>(&response_text)
             .map_err(ParaswapResponseError::DeserializeError)?;

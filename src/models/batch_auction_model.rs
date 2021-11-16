@@ -492,7 +492,8 @@ mod tests {
                 "prices": {
                     "0xa7d1c04faf998f9161fc9f800a99a809b84cfc9d": "1039670252129038",
                     "0xc778417e063141139fce010982780140aa0cd5ab": "1000000000000000000"
-                }
+                },
+                "interaction_data":[]
             }
         "#;
         assert!(serde_json::from_str::<SettledBatchAuctionModel>(empty_solution).is_ok());
@@ -509,7 +510,8 @@ mod tests {
                 },
                 "ref_token": null,
                 "prices": {},
-                "uniswaps": {}
+                "uniswaps": {},
+                "interaction_data":[]
             }
         "#;
         assert!(serde_json::from_str::<SettledBatchAuctionModel>(x).is_ok());

@@ -58,14 +58,6 @@ where
 /// Converts an amount of units of an ERC20 token with the specified amount of
 /// decimals into its decimal representation as a string.
 ///
-/// # Examples
-///
-/// ```rust
-/// use model::u256_decimal::format_units;
-///
-/// assert_eq!(format_units(42u64.into(), 0), "42");
-/// assert_eq!(format_units(1_337_000u64.into(), 6), "1.337000")
-/// ```
 pub fn format_units(amount: U256, decimals: usize) -> String {
     let str_amount = amount.to_string();
     if decimals == 0 {

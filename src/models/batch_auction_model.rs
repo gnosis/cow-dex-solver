@@ -367,6 +367,9 @@ mod tests {
             metadata: Some(MetadataModel {
                 environment: Some(String::from("Such Meta")),
             }),
+            instance_name: None,
+            max_nr_exec_orders: None,
+            time_limit: None,
         };
 
         let result = serde_json::to_value(&model).unwrap();
@@ -460,6 +463,9 @@ mod tests {
           "metadata": {
             "environment": "Such Meta",
           },
+          "time_limit": null,
+          "max_nr_exec_orders": null,
+          "instance_name": null,
         });
         assert_eq!(result, expected);
     }

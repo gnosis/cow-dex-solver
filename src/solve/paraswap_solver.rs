@@ -36,8 +36,8 @@ impl ParaswapSolver {
 impl ParaswapSolver {
     pub async fn get_full_price_info_for_order(&self, order: &OrderModel) -> Result<(Root, U256)> {
         let (amount, side) = match order.is_sell_order {
-            true => (order.buy_amount, Side::Buy),
-            false => (order.sell_amount, Side::Sell),
+            false => (order.buy_amount, Side::Buy),
+            true => (order.sell_amount, Side::Sell),
         };
         let price_query = PriceQuery {
             src_token: order.sell_token,

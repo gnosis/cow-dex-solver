@@ -9,5 +9,5 @@ cargo run
 
 then post requests to it like:
 ```
-curl -vX POST "http://127.0.0.1:8000/api/v1/solve" -H  "accept: application/json" -H  "Content-Type: application/json" --data "@/Users/alexherrmann/gnosis/gp-v2-solver-lib/data/test.json"
+curl -vX POST "http://127.0.0.1:8000/solve" -H  "accept: application/json" -H  "Content-Type: application/json" --data "@/Users/alexherrmann/gnosis/gp-v2-solver-lib/data/test.json"
 ```

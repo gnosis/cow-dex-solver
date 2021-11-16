@@ -11,6 +11,7 @@ use derivative::Derivative;
 use primitive_types::{H160, U256};
 use reqwest::{Client, IntoUrl, Url};
 use serde::Deserialize;
+use std::time::Duration;
 use thiserror::Error;
 use web3::types::Bytes;
 
@@ -157,10 +158,11 @@ pub enum ZeroExResponseError {
 impl ZeroExApi for DefaultZeroExApi {
     /// Retrieves a swap for the specified parameters from the 1Inch API.
     async fn get_swap(&self, query: SwapQuery) -> Result<SwapResponse, ZeroExResponseError> {
-        let query_str = format!("{:?}", &query);
+        let query_str = format!("{:?}", &query.clone().into_url(&self.base_url));
         let response_text = self
             .client
             .get(query.into_url(&self.base_url))
+            .timeout(Duration::new(2, 0))
             .send()
             .await
             .map_err(ZeroExResponseError::Send)?

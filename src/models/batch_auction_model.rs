@@ -14,6 +14,9 @@ pub struct BatchAuctionModel {
     pub orders: BTreeMap<usize, OrderModel>,
     pub amms: BTreeMap<usize, AmmModel>,
     pub metadata: Option<MetadataModel>,
+    pub instance_name: Option<String>,
+    pub time_limit: Option<u64>,
+    pub max_nr_exec_orders: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

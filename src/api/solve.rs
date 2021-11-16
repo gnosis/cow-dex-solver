@@ -1,6 +1,6 @@
 use crate::models::batch_auction_model::BatchAuctionModel;
 use crate::models::batch_auction_model::SettledBatchAuctionModel;
-use crate::solve::solve;
+use crate::solve;
 use anyhow::Result;
 use hex::{FromHex, FromHexError};
 use primitive_types::H160;
@@ -33,7 +33,7 @@ pub fn get_solve_request() -> impl Filter<Extract = (BatchAuctionModel,), Error 
         .and(warp::post())
         .and(extract_payload())
 }
-const MAX_JSON_BODY_PAYLOAD: u64 = 1024 * 16;
+const MAX_JSON_BODY_PAYLOAD: u64 = 1024 * 16 * 100000;
 
 fn extract_payload<T: DeserializeOwned + Send>(
 ) -> impl Filter<Extract = (T,), Error = Rejection> + Clone {

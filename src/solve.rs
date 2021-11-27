@@ -299,7 +299,13 @@ fn get_trade_amounts_without_cow_volumes(
                     ),
                 );
             } else {
-                return Err(anyhow!("Not sure how to proceed, cow too good"));
+                updated_traded_amounts.insert(
+                    (*src_token, *dest_token),
+                    (
+                        opposite_amounts.0.checked_sub(entry_amouts.1).unwrap(),
+                        U256::zero(),
+                    ),
+                );
             }
         } else {
             updated_traded_amounts.insert(

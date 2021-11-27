@@ -24,7 +24,9 @@ use std::time::Duration;
 ethcontract::contract!("contracts/artifacts/ERC20.json");
 
 pub async fn solve(
-    BatchAuctionModel { orders, .. }: BatchAuctionModel,
+    BatchAuctionModel {
+        orders, mut tokens, ..
+    }: BatchAuctionModel,
 ) -> Result<SettledBatchAuctionModel> {
     if orders.is_empty() {
         return Ok(SettledBatchAuctionModel::default());
@@ -118,27 +120,46 @@ pub async fn solve(
             swap.clone(),
         )?;
 
-        // get allowance interaction data:
-        let spender = swap.allowance_target;
-        let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
-        let web3 = Web3::new(http);
-        let token = ERC20::at(&web3, query.sell_token);
-        let method = token.approve(spender, swap.sell_amount);
-        let calldata = method.tx.data.expect("no calldata").0;
-        let interaction_item = InteractionData {
-            target: query.sell_token,
-            value: 0.into(),
-            call_data: ethcontract::Bytes(calldata),
-        };
-        solution.interaction_data.push(interaction_item);
+        let mut available_buffer = U256::zero();
+        if let Some(token) = tokens.get(&query.buy_token) {
+            if let Some(buffer) = token.internal_buffer {
+                available_buffer = buffer;
+            }
+        }
+        if swap.buy_amount < available_buffer {
+            // trade only against internal buffer
+            if let Some(mut token_info) = tokens.get_mut(&query.buy_token) {
+                if let Some(buffer) = token_info.internal_buffer {
+                    token_info.internal_buffer = buffer.checked_sub(available_buffer);
+                }
+            }
+            if let Some(mut token_info) = tokens.get_mut(&query.sell_token) {
+                token_info.internal_buffer = Some(swap.sell_amount);
+            }
+        } else {
+            // use external trade
+            // get allowance interaction data:
+            let spender = swap.allowance_target;
+            let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
+            let web3 = Web3::new(http);
+            let token = ERC20::at(&web3, query.sell_token);
+            let method = token.approve(spender, swap.sell_amount);
+            let calldata = method.tx.data.expect("no calldata").0;
+            let interaction_item = InteractionData {
+                target: query.sell_token,
+                value: 0.into(),
+                call_data: ethcontract::Bytes(calldata),
+            };
+            solution.interaction_data.push(interaction_item);
 
-        // put swap tx data into settled_batch_auction
-        let interaction_item = InteractionData {
-            target: swap.to,
-            value: swap.value,
-            call_data: ethcontract::Bytes(swap.data.0),
-        };
-        solution.interaction_data.push(interaction_item);
+            // put swap tx data into settled_batch_auction
+            let interaction_item = InteractionData {
+                target: swap.to,
+                value: swap.value,
+                call_data: ethcontract::Bytes(swap.data.0),
+            };
+            solution.interaction_data.push(interaction_item);
+        }
 
         // Sort swap_results in such a way that the next pop contains a token already processed in the clearing prices, if there exists one.
         swap_results.sort_by(|a, b| {

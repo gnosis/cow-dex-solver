@@ -108,7 +108,7 @@ pub struct StablePoolParameters {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct TokenInfoModel {
     pub decimals: Option<u8>,
     pub external_price: Option<f64>,

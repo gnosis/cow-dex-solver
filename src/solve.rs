@@ -10,10 +10,10 @@ use crate::models::batch_auction_model::SettledBatchAuctionModel;
 use crate::solve::paraswap_solver::ParaswapSolver;
 use crate::solve::solver_utils::Slippage;
 use crate::solve::zeroex_solver::api::SwapQuery;
+use ethcontract::batch::CallBatch;
 use ethcontract::prelude::*;
 
 use crate::solve::zeroex_solver::api::SwapResponse;
-use crate::solve::zeroex_solver::api::ZeroExResponseError;
 use crate::solve::zeroex_solver::ZeroExSolver;
 use anyhow::{anyhow, Result};
 use futures::future::join_all;
@@ -33,7 +33,7 @@ pub async fn solve(
     }
 
     let mut orders: Vec<(usize, OrderModel)> = orders.into_iter().map(|(i, y)| (i, y)).collect();
-    // For simplicity, only solve for up to 5 orders
+    // For simplicity, only solve for up to 20 orders
     orders.truncate(20);
 
     // Step1: get splitted trade amounts per tokenpair for each order via paraswap dex-ag
@@ -100,19 +100,52 @@ pub async fn solve(
                 };
                 (query.clone(), zeroex_solver.client.get_swap(query).await)
             });
-    let mut swap_results = join_all(zeroex_futures).await;
-    // 4th step: Build settlements with price and interactions
-    let mut solution = SettledBatchAuctionModel::default();
+    let swap_results = join_all(zeroex_futures).await;
+    let mut swap_results: Vec<(SwapQuery, SwapResponse)> = swap_results
+        .iter()
+        .map(|(query, swap)| match swap {
+            Ok(swap) => Ok((query.clone(), swap.clone())),
+            Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
+        })
+        .collect::<Result<Vec<(SwapQuery, SwapResponse)>>>()?;
 
+    // 4th step: Get all approvals via a batch requests for the different swap
+    let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
+    let web3 = Web3::new(http);
+    let settlement_contract_address: H160 =
+        "9008d19f58aabd9ed0d60971565aa8510560ab41".parse().unwrap();
+    let mut batch = CallBatch::new(web3.transport());
+    let mut calls = Vec::new();
+    for (query, swap) in swap_results.clone() {
+        let token = ERC20::at(&web3, query.sell_token);
+        calls.push(
+            token
+                .allowance(settlement_contract_address, swap.allowance_target)
+                .batch_call(&mut batch),
+        )
+    }
+    batch.execute_all(usize::MAX).await;
+    let mut allowances: HashMap<(Address, Address), U256> = HashMap::new();
+    for (id, call) in calls.into_iter().enumerate() {
+        let call_result = call.await.unwrap_or_else(|_| U256::zero());
+        if let Some((query, swap)) = swap_results.clone().get(id) {
+            tracing::debug!(
+                "Call {} returned {} for query:{:?} and swap:{:?}",
+                id,
+                call_result,
+                query,
+                swap
+            );
+            allowances.insert((query.sell_token, swap.allowance_target), call_result);
+        } else {
+            tracing::debug!("Call {} returned {}", id, call_result);
+        }
+    }
+
+    // 5th step: Build settlements with price and interactions
+    let mut solution = SettledBatchAuctionModel::default();
     while !swap_results.is_empty() {
-        let (query, swap) = swap_results.pop().unwrap();
-        let swap = match swap {
-            Ok(swap) => swap,
-            Err(err) => {
-                tracing::debug!("Could not get zeroX trade, due to {:}", err);
-                return Ok(SettledBatchAuctionModel::default());
-            }
-        };
+        let (query, mut swap) = swap_results.pop().unwrap();
         insert_new_price(
             &mut solution,
             &splitted_trade_amounts,
@@ -138,20 +171,24 @@ pub async fn solve(
             }
         } else {
             // use external trade
-            // get allowance interaction data:
             let spender = swap.allowance_target;
-            let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
-            let web3 = Web3::new(http);
-            let token = ERC20::at(&web3, query.sell_token);
-            let method = token.approve(spender, swap.sell_amount);
-            let calldata = method.tx.data.expect("no calldata").0;
-            let interaction_item = InteractionData {
-                target: query.sell_token,
-                value: 0.into(),
-                call_data: ethcontract::Bytes(calldata),
-            };
-            solution.interaction_data.push(interaction_item);
-
+            // Push allowance interaction data, if necessary
+            let allowance = allowances
+                .entry((query.sell_token, spender))
+                .or_insert_with(U256::zero);
+            if allowance.lt(&&mut swap.sell_amount) {
+                let token = ERC20::at(&web3, query.sell_token);
+                let method = token.approve(spender, swap.sell_amount);
+                let calldata = method.tx.data.expect("no calldata").0;
+                let interaction_item = InteractionData {
+                    target: query.sell_token,
+                    value: 0.into(),
+                    call_data: ethcontract::Bytes(calldata),
+                };
+                solution.interaction_data.push(interaction_item);
+            } else {
+                *allowance = allowance.checked_sub(swap.sell_amount).unwrap()
+            }
             // put swap tx data into settled_batch_auction
             let interaction_item = InteractionData {
                 target: swap.to,
@@ -167,7 +204,8 @@ pub async fn solve(
                 .cmp(&one_token_is_already_in_settlement(&solution, b))
         })
     }
-    // 5th step: Insert traded orders into settlement
+
+    // 6th step: Insert traded orders into settlement
     for (i, order) in matched_orders {
         solution.orders.insert(
             i,
@@ -274,10 +312,7 @@ fn get_trade_amounts_without_cow_volumes(
 }
 fn one_token_is_already_in_settlement(
     solution: &SettledBatchAuctionModel,
-    swap_info: &(
-        SwapQuery,
-        std::result::Result<SwapResponse, ZeroExResponseError>,
-    ),
+    swap_info: &(SwapQuery, SwapResponse),
 ) -> u64 {
     let tokens: Vec<H160> = solution.prices.keys().copied().collect();
     if tokens.contains(&swap_info.0.sell_token) || tokens.contains(&swap_info.0.buy_token) {

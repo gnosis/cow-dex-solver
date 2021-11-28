@@ -1,4 +1,4 @@
-mod api;
+pub mod api;
 use anyhow::{anyhow, Result};
 
 use crate::models::batch_auction_model::OrderModel;

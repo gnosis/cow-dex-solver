@@ -5,6 +5,9 @@ pub mod tracing_helper;
 pub mod utils;
 extern crate serde_derive;
 
+#[macro_use]
+extern crate lazy_static;
+
 use std::net::SocketAddr;
 use tokio::{task, task::JoinHandle};
 

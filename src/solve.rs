@@ -1,13 +1,14 @@
 mod paraswap_solver;
 mod solver_utils;
 mod zeroex_solver;
-
 use crate::models::batch_auction_model::ExecutedOrderModel;
 use crate::models::batch_auction_model::InteractionData;
 use crate::models::batch_auction_model::OrderModel;
 use crate::models::batch_auction_model::SettledBatchAuctionModel;
 use crate::models::batch_auction_model::{BatchAuctionModel, TokenInfoModel};
 use crate::solve::paraswap_solver::ParaswapSolver;
+
+use crate::solve::paraswap_solver::api::Root;
 use crate::solve::solver_utils::Slippage;
 use crate::solve::zeroex_solver::api::SwapQuery;
 use ethcontract::batch::CallBatch;
@@ -23,6 +24,10 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 ethcontract::contract!("contracts/artifacts/ERC20.json");
+
+lazy_static! {
+    pub static ref TEN_THOUSAND: U256 = U256::from_dec_str("1000").unwrap();
+}
 
 pub async fn solve(
     BatchAuctionModel {
@@ -249,9 +254,7 @@ async fn get_paraswap_sub_trades_from_order(
     };
     let mut sub_trades = Vec::new();
     let mut matched_orders = Vec::new();
-    if (price_response.price_route.dest_amount.gt(&order.buy_amount) && order.is_sell_order)
-        || (price_response.price_route.src_amount.lt(&order.sell_amount) && !order.is_sell_order)
-    {
+    if satisfies_limit_price_with_buffer(&price_response, order) {
         matched_orders.push((index, order.clone()));
         for swap in &price_response.price_route.best_route.get(0).unwrap().swaps {
             for trade in &swap.swap_exchanges {
@@ -262,6 +265,22 @@ async fn get_paraswap_sub_trades_from_order(
         }
     }
     ((matched_orders), sub_trades)
+}
+fn satisfies_limit_price_with_buffer(price_response: &Root, order: &OrderModel) -> bool {
+    (price_response.price_route.dest_amount.ge(&order
+        .buy_amount
+        .checked_mul(TEN_THOUSAND.checked_add(U256::one()).unwrap())
+        .unwrap()
+        .checked_div(*TEN_THOUSAND)
+        .unwrap())
+        && order.is_sell_order)
+        || (price_response.price_route.src_amount.le(&order
+            .sell_amount
+            .checked_mul(TEN_THOUSAND.checked_add(U256::one()).unwrap())
+            .unwrap()
+            .checked_div(*TEN_THOUSAND)
+            .unwrap())
+            && !order.is_sell_order)
 }
 
 fn get_splitted_trade_amounts_from_trading_vec(

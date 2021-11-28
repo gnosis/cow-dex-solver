@@ -250,7 +250,7 @@ async fn get_paraswap_sub_trades_from_order(
     let mut sub_trades = Vec::new();
     let mut matched_orders = Vec::new();
     if (price_response.price_route.dest_amount.gt(&order.buy_amount) && order.is_sell_order)
-        || (price_response.price_route.src_amount.gt(&order.sell_amount) && !order.is_sell_order)
+        || (price_response.price_route.src_amount.lt(&order.sell_amount) && !order.is_sell_order)
     {
         matched_orders.push((index, order.clone()));
         for swap in &price_response.price_route.best_route.get(0).unwrap().swaps {

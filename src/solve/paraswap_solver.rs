@@ -1,11 +1,13 @@
 mod api;
+use anyhow::{anyhow, Result};
 
 use crate::models::batch_auction_model::OrderModel;
-use anyhow::Result;
+use crate::models::batch_auction_model::TokenInfoModel;
 use api::{DefaultParaswapApi, ParaswapApi, PriceQuery, Root, Side};
 use derivative::Derivative;
 use primitive_types::U256;
 use reqwest::Client;
+use std::collections::BTreeMap;
 
 const REFERRER: &str = "GPv2";
 
@@ -34,7 +36,11 @@ impl ParaswapSolver {
 }
 
 impl ParaswapSolver {
-    pub async fn get_full_price_info_for_order(&self, order: &OrderModel) -> Result<(Root, U256)> {
+    pub async fn get_full_price_info_for_order(
+        &self,
+        order: &OrderModel,
+        tokens: BTreeMap<primitive_types::H160, TokenInfoModel>,
+    ) -> Result<(Root, U256)> {
         let (amount, side) = match order.is_sell_order {
             false => (order.buy_amount, Side::Buy),
             true => (order.sell_amount, Side::Sell),
@@ -42,8 +48,16 @@ impl ParaswapSolver {
         let price_query = PriceQuery {
             src_token: order.sell_token,
             dest_token: order.buy_token,
-            src_decimals: 18usize,  //decimals(token_info, &order.sell_token)?,
-            dest_decimals: 18usize, //decimals(token_info, &order.buy_token)?,
+            src_decimals: tokens
+                .get(&order.sell_token)
+                .ok_or_else(|| anyhow!("Instance error: tokenlist did not contain all tokens"))?
+                .decimals
+                .unwrap_or(18u8) as usize,
+            dest_decimals: tokens
+                .get(&order.buy_token)
+                .ok_or_else(|| anyhow!("Instance error: tokenlist did not contain all tokens"))?
+                .decimals
+                .unwrap_or(18u8) as usize,
             amount,
             side,
             exclude_dexs: Some(self.disabled_paraswap_dexs.clone()),

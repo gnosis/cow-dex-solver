@@ -2,16 +2,17 @@ mod paraswap_solver;
 mod solver_utils;
 mod zeroex_solver;
 
-use crate::models::batch_auction_model::BatchAuctionModel;
 use crate::models::batch_auction_model::ExecutedOrderModel;
 use crate::models::batch_auction_model::InteractionData;
 use crate::models::batch_auction_model::OrderModel;
 use crate::models::batch_auction_model::SettledBatchAuctionModel;
+use crate::models::batch_auction_model::{BatchAuctionModel, TokenInfoModel};
 use crate::solve::paraswap_solver::ParaswapSolver;
 use crate::solve::solver_utils::Slippage;
 use crate::solve::zeroex_solver::api::SwapQuery;
 use ethcontract::batch::CallBatch;
 use ethcontract::prelude::*;
+use std::collections::BTreeMap;
 
 use crate::solve::zeroex_solver::api::SwapResponse;
 use crate::solve::zeroex_solver::ZeroExSolver;
@@ -37,7 +38,8 @@ pub async fn solve(
     orders.truncate(20);
 
     // Step1: get splitted trade amounts per tokenpair for each order via paraswap dex-ag
-    let paraswap_futures = orders.iter().map(|(i, order)| async move {
+    let mut paraswap_futures = Vec::new();
+    for (i, order) in orders.iter() {
         let client = reqwest::ClientBuilder::new()
             .timeout(Duration::new(1, 0))
             .user_agent("gp-v2-services/2.0.0")
@@ -46,8 +48,13 @@ pub async fn solve(
         let paraswap_solver =
             ParaswapSolver::new(vec![String::from("ParaSwapPool4")], client.clone());
 
-        get_paraswap_sub_trades_from_order(*i, paraswap_solver, order).await
-    });
+        paraswap_futures.push(get_paraswap_sub_trades_from_order(
+            *i,
+            paraswap_solver,
+            order,
+            tokens.clone(),
+        ));
+    }
     type MachtedOrderBracket = (
         Vec<Vec<(usize, OrderModel)>>,
         Vec<Vec<(H160, H160, U256, U256)>>,
@@ -154,8 +161,8 @@ pub async fn solve(
         )?;
 
         let mut available_buffer = U256::zero();
-        if let Some(token) = tokens.get(&query.buy_token) {
-            if let Some(buffer) = token.internal_buffer {
+        if let Some(token_with_buffer) = tokens.clone().get(&query.buy_token) {
+            if let Some(buffer) = token_with_buffer.internal_buffer {
                 available_buffer = buffer;
             }
         }
@@ -223,9 +230,12 @@ async fn get_paraswap_sub_trades_from_order(
     index: usize,
     paraswap_solver: ParaswapSolver,
     order: &OrderModel,
+    tokens: BTreeMap<primitive_types::H160, TokenInfoModel>,
 ) -> (Vec<(usize, OrderModel)>, Vec<(H160, H160, U256, U256)>) {
     // get tokeninfo from ordermodel
-    let (price_response, _amount) = match paraswap_solver.get_full_price_info_for_order(order).await
+    let (price_response, _amount) = match paraswap_solver
+        .get_full_price_info_for_order(order, tokens)
+        .await
     {
         Ok(response) => response,
         Err(err) => {
@@ -239,7 +249,9 @@ async fn get_paraswap_sub_trades_from_order(
     };
     let mut sub_trades = Vec::new();
     let mut matched_orders = Vec::new();
-    if price_response.price_route.dest_amount.gt(&order.buy_amount) {
+    if (price_response.price_route.dest_amount.gt(&order.buy_amount) && order.is_sell_order)
+        || (price_response.price_route.src_amount.gt(&order.sell_amount) && !order.is_sell_order)
+    {
         matched_orders.push((index, order.clone()));
         for swap in &price_response.price_route.best_route.get(0).unwrap().swaps {
             for trade in &swap.swap_exchanges {

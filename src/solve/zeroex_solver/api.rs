@@ -113,16 +113,18 @@ pub trait ZeroExApi {
 pub struct DefaultZeroExApi {
     client: Client,
     base_url: Url,
+    api_key: Option<String>,
 }
 
 impl DefaultZeroExApi {
     pub const DEFAULT_URL: &'static str = "https://api.0x.org/";
 
     /// Create a new 1Inch HTTP API client with the specified base URL.
-    pub fn new(base_url: impl IntoUrl, client: Client) -> Result<Self> {
+    pub fn new(base_url: impl IntoUrl, api_key: Option<String>, client: Client) -> Result<Self> {
         Ok(Self {
             client,
             base_url: base_url.into_url()?,
+            api_key,
         })
     }
 }
@@ -159,10 +161,14 @@ impl ZeroExApi for DefaultZeroExApi {
     /// Retrieves a swap for the specified parameters from the 1Inch API.
     async fn get_swap(&self, query: SwapQuery) -> Result<SwapResponse, ZeroExResponseError> {
         let query_str = format!("{:?}", &query.clone().into_url(&self.base_url));
-        let response_text = self
+        let mut request = self
             .client
             .get(query.into_url(&self.base_url))
-            .timeout(Duration::new(2, 0))
+            .timeout(Duration::new(3, 0));
+        if let Some(key) = &self.api_key {
+            request = request.header("0x-api-key", key);
+        }
+        let response_text = request
             .send()
             .await
             .map_err(ZeroExResponseError::Send)?

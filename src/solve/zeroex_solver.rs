@@ -36,7 +36,7 @@ pub struct ZeroExSolver {
 const MAINNET_CHAIN_ID: u64 = 1;
 
 impl ZeroExSolver {
-    pub fn new(chain_id: u64, client: Client) -> Result<Self> {
+    pub fn new(chain_id: u64, api_key: Option<String>, client: Client) -> Result<Self> {
         ensure!(
             chain_id == MAINNET_CHAIN_ID,
             "0x solver only supported on Mainnet",
@@ -44,6 +44,7 @@ impl ZeroExSolver {
         Ok(Self {
             client: Box::new(DefaultZeroExApi::new(
                 DefaultZeroExApi::DEFAULT_URL,
+                api_key,
                 client,
             )?),
         })

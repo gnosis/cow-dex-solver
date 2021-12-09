@@ -14,6 +14,7 @@ use crate::solve::zeroex_solver::api::SwapQuery;
 use ethcontract::batch::CallBatch;
 use ethcontract::prelude::*;
 use std::collections::BTreeMap;
+use std::env;
 
 use crate::solve::zeroex_solver::api::SwapResponse;
 use crate::solve::zeroex_solver::ZeroExSolver;
@@ -34,6 +35,12 @@ pub async fn solve(
         orders, mut tokens, ..
     }: BatchAuctionModel,
 ) -> Result<SettledBatchAuctionModel> {
+    let api_key;
+    if env::var("ZEROEX_API_KEY").is_err() {
+        api_key = None;
+    } else {
+        api_key = Some(String::from(env::var("ZEROEX_API_KEY")?));
+    }
     if orders.is_empty() {
         return Ok(SettledBatchAuctionModel::default());
     }
@@ -66,7 +73,8 @@ pub async fn solve(
     );
     let (matched_orders, single_trade_results): MachtedOrderBracket =
         join_all(paraswap_futures).await.into_iter().unzip();
-    let matched_orders: Vec<(usize, OrderModel)> = matched_orders.into_iter().flatten().collect();
+    let mut matched_orders: Vec<(usize, OrderModel)> =
+        matched_orders.into_iter().flatten().collect();
 
     let single_trade_results = single_trade_results.into_iter().flatten().collect();
     let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
@@ -79,47 +87,103 @@ pub async fn solve(
     }
 
     // 2nd step: Removing obvious cow volume from splitted traded amounts, by matching opposite volume
-    let updated_traded_amounts = get_trade_amounts_without_cow_volumes(&splitted_trade_amounts)?;
+    let updated_traded_amounts;
+    let contains_cow = contain_cow(&splitted_trade_amounts);
+    if contains_cow {
+        tracing::debug!("Found cow and trying to solve it");
+        // if there is a cow volume, we try to remove it
+        updated_traded_amounts = get_trade_amounts_without_cow_volumes(&splitted_trade_amounts)?;
 
-    for (pair, entry_amouts) in &updated_traded_amounts {
-        tracing::debug!(
-            " After cow merge: trade on pair {:?} with values {:?}",
-            pair,
-            entry_amouts
-        );
+        for (pair, entry_amouts) in &updated_traded_amounts {
+            tracing::debug!(
+                " After cow merge: trade on pair {:?} with values {:?}",
+                pair,
+                entry_amouts
+            );
+        }
+    } else {
+        tracing::debug!("Falling back to normal zeroEx solver");
+
+        let mut order_hashmap = HashMap::new();
+        for (_, order) in orders.clone().iter() {
+            order_hashmap.insert(
+                (order.sell_token, order.buy_token),
+                (true, order.sell_amount, order.buy_amount),
+            );
+        }
+        updated_traded_amounts = order_hashmap;
     }
 
     // 3rd step: Get trades from zeroEx of left-over amounts
-    let zeroex_futures =
-        updated_traded_amounts
-            .into_iter()
-            .map(|(pair, entry_amouts)| async move {
+    let zeroex_futures = updated_traded_amounts.into_iter().map(
+        |(pair, (must_satisfy_limit_price, sell_amount, buy_amount))| {
+            let cloned_api_key = api_key.clone();
+            async move {
                 let client = reqwest::ClientBuilder::new()
                     .timeout(Duration::new(1, 0))
                     .user_agent("gp-v2-services/2.0.0")
                     .build()
                     .unwrap();
-                let zeroex_solver = ZeroExSolver::new(1u64, client.clone()).unwrap();
+                let zeroex_solver =
+                    ZeroExSolver::new(1u64, cloned_api_key, client.clone()).unwrap();
 
                 let (src_token, dest_token) = pair;
                 let query = SwapQuery {
                     sell_token: src_token,
                     buy_token: dest_token,
-                    sell_amount: Some(entry_amouts.0),
+                    sell_amount: Some(sell_amount),
                     buy_amount: None,
                     slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
                     skip_validation: Some(true),
                 };
-                (query.clone(), zeroex_solver.client.get_swap(query).await)
-            });
+                (
+                    (must_satisfy_limit_price, sell_amount, buy_amount),
+                    query.clone(),
+                    zeroex_solver.client.get_swap(query).await,
+                )
+            }
+        },
+    );
     let swap_results = join_all(zeroex_futures).await;
     let mut swap_results: Vec<(SwapQuery, SwapResponse)> = swap_results
         .iter()
-        .map(|(query, swap)| match swap {
-            Ok(swap) => Ok((query.clone(), swap.clone())),
-            Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
-        })
-        .collect::<Result<Vec<(SwapQuery, SwapResponse)>>>()?;
+        .map(
+            |((must_satisfy_limit_price, sell_amount, buy_amount), query, swap)| match swap {
+                Ok(swap) => {
+                    if *must_satisfy_limit_price
+                        && swap
+                            .sell_amount
+                            .checked_mul(*buy_amount)
+                            .gt(&sell_amount.checked_mul(swap.buy_amount))
+                    {
+                        return Err(anyhow!("swap price not good enough"));
+                    }
+                    Ok((query.clone(), swap.clone()))
+                }
+                Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
+            },
+        )
+        .filter_map(|s| s.ok())
+        .collect::<Vec<(SwapQuery, SwapResponse)>>();
+
+    if !contains_cow {
+        matched_orders = Vec::new();
+        for (i, order) in orders.iter() {
+            if !swap_results
+                .clone()
+                .into_iter()
+                .filter(|(query, swap)| {
+                    swap.sell_amount == order.sell_amount
+                        && order.buy_token == query.buy_token
+                        && order.sell_token == order.sell_token
+                })
+                .collect::<Vec<(SwapQuery, SwapResponse)>>()
+                .is_empty()
+            {
+                matched_orders.push((*i, order.clone()));
+            }
+        }
+    }
 
     // 4th step: Get all approvals via a batch requests for the different swap
     let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
@@ -301,7 +365,7 @@ fn get_splitted_trade_amounts_from_trading_vec(
 
 fn get_trade_amounts_without_cow_volumes(
     splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>,
-) -> Result<HashMap<(H160, H160), (U256, U256)>> {
+) -> Result<HashMap<(H160, H160), (bool, U256, U256)>> {
     let mut updated_traded_amounts = HashMap::new();
     for (pair, entry_amouts) in splitted_trade_amounts {
         let (src_token, dest_token) = pair;
@@ -317,6 +381,7 @@ fn get_trade_amounts_without_cow_volumes(
                 updated_traded_amounts.insert(
                     (*dest_token, *src_token),
                     (
+                        false,
                         entry_amouts.1.checked_sub(opposite_amounts.0).unwrap(),
                         U256::zero(),
                     ),
@@ -325,6 +390,7 @@ fn get_trade_amounts_without_cow_volumes(
                 updated_traded_amounts.insert(
                     (*src_token, *dest_token),
                     (
+                        false,
                         entry_amouts.0.checked_sub(opposite_amounts.1).unwrap(),
                         U256::zero(),
                     ),
@@ -333,6 +399,7 @@ fn get_trade_amounts_without_cow_volumes(
                 updated_traded_amounts.insert(
                     (*src_token, *dest_token),
                     (
+                        false,
                         opposite_amounts.0.checked_sub(entry_amouts.1).unwrap(),
                         U256::zero(),
                     ),
@@ -341,11 +408,28 @@ fn get_trade_amounts_without_cow_volumes(
         } else {
             updated_traded_amounts.insert(
                 (*src_token, *dest_token),
-                *splitted_trade_amounts.get(pair).unwrap(),
+                (
+                    false,
+                    splitted_trade_amounts.get(pair).unwrap().0,
+                    splitted_trade_amounts.get(pair).unwrap().1,
+                ),
             );
         }
     }
     Ok(updated_traded_amounts)
+}
+
+fn contain_cow(splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>) -> bool {
+    let mut pairs = HashMap::new();
+    for (pair, _) in splitted_trade_amounts {
+        let (src_token, dest_token) = pair;
+        let reverse_pair = (*dest_token, *src_token);
+        if pairs.get(&reverse_pair).is_some() {
+            return true;
+        }
+        pairs.insert(pair, true);
+    }
+    false
 }
 fn one_token_is_already_in_settlement(
     solution: &SettledBatchAuctionModel,
@@ -382,7 +466,8 @@ pub fn insert_new_price(
             (*substracted_sell_amount, *buy_amount)
         }
         (Some((_, _)), None) => (U256::zero(), U256::zero()),
-        _ => return Err(anyhow!("This case should not happen, please investigate")),
+        (None, Some((_, _))) => (U256::zero(), U256::zero()),
+        (None, None) => (U256::zero(), U256::zero()),
     };
     let (sell_amount, buy_amount) = (
         sell_amount.checked_add(swap.sell_amount).unwrap(),

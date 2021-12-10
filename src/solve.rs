@@ -39,7 +39,7 @@ pub async fn solve(
     if env::var("ZEROEX_API_KEY").is_err() {
         api_key = None;
     } else {
-        api_key = Some(String::from(env::var("ZEROEX_API_KEY")?));
+        api_key = Some(env::var("ZEROEX_API_KEY")?);
     }
     if orders.is_empty() {
         return Ok(SettledBatchAuctionModel::default());
@@ -108,15 +108,20 @@ pub async fn solve(
         for (_, order) in orders.clone().iter() {
             order_hashmap.insert(
                 (order.sell_token, order.buy_token),
-                (true, order.sell_amount, order.buy_amount),
+                TradeAmount {
+                    must_satisfy_limit_price: true,
+                    sell_amount: order.sell_amount,
+                    buy_amount: order.buy_amount,
+                },
             );
         }
         updated_traded_amounts = order_hashmap;
     }
 
     // 3rd step: Get trades from zeroEx of left-over amounts
-    let zeroex_futures = updated_traded_amounts.into_iter().map(
-        |(pair, (must_satisfy_limit_price, sell_amount, buy_amount))| {
+    let zeroex_futures = updated_traded_amounts
+        .into_iter()
+        .map(|(pair, trade_amount)| {
             let cloned_api_key = api_key.clone();
             async move {
                 let client = reqwest::ClientBuilder::new()
@@ -131,55 +136,46 @@ pub async fn solve(
                 let query = SwapQuery {
                     sell_token: src_token,
                     buy_token: dest_token,
-                    sell_amount: Some(sell_amount),
+                    sell_amount: Some(trade_amount.sell_amount),
                     buy_amount: None,
                     slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
                     skip_validation: Some(true),
                 };
                 (
-                    (must_satisfy_limit_price, sell_amount, buy_amount),
+                    trade_amount,
                     query.clone(),
                     zeroex_solver.client.get_swap(query).await,
                 )
             }
-        },
-    );
+        });
     let swap_results = join_all(zeroex_futures).await;
     let mut swap_results: Vec<(SwapQuery, SwapResponse)> = swap_results
         .iter()
-        .map(
-            |((must_satisfy_limit_price, sell_amount, buy_amount), query, swap)| match swap {
-                Ok(swap) => {
-                    if *must_satisfy_limit_price
-                        && swap
-                            .sell_amount
-                            .checked_mul(*buy_amount)
-                            .gt(&sell_amount.checked_mul(swap.buy_amount))
-                    {
-                        return Err(anyhow!("swap price not good enough"));
-                    }
-                    Ok((query.clone(), swap.clone()))
+        .map(|(trade_amount, query, swap)| match swap {
+            Ok(swap) => {
+                if trade_amount.must_satisfy_limit_price
+                    && swap
+                        .sell_amount
+                        .checked_mul(trade_amount.buy_amount)
+                        .gt(&trade_amount.sell_amount.checked_mul(swap.buy_amount))
+                {
+                    return Err(anyhow!("swap price not good enough"));
                 }
-                Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
-            },
-        )
+                Ok((query.clone(), swap.clone()))
+            }
+            Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
+        })
         .filter_map(|s| s.ok())
         .collect::<Vec<(SwapQuery, SwapResponse)>>();
 
     if !contains_cow {
         matched_orders = Vec::new();
         for (i, order) in orders.iter() {
-            if !swap_results
-                .clone()
-                .into_iter()
-                .filter(|(query, swap)| {
-                    swap.sell_amount == order.sell_amount
-                        && order.buy_token == query.buy_token
-                        && order.sell_token == order.sell_token
-                })
-                .collect::<Vec<(SwapQuery, SwapResponse)>>()
-                .is_empty()
-            {
+            if swap_results.clone().into_iter().any(|(query, swap)| {
+                swap.sell_amount == order.sell_amount
+                    && order.buy_token == query.buy_token
+                    && order.sell_token.eq(&order.sell_token)
+            }) {
                 matched_orders.push((*i, order.clone()));
             }
         }
@@ -222,12 +218,18 @@ pub async fn solve(
     let mut solution = SettledBatchAuctionModel::default();
     while !swap_results.is_empty() {
         let (query, mut swap) = swap_results.pop().unwrap();
-        insert_new_price(
+        match insert_new_price(
             &mut solution,
             &splitted_trade_amounts,
             query.clone(),
             swap.clone(),
-        )?;
+        ) {
+            Ok(()) => {}
+            Err(err) => {
+                tracing::debug!("Inserting a price failed due to {:?}", err);
+                return Ok(SettledBatchAuctionModel::default());
+            }
+        }
 
         let mut available_buffer = U256::zero();
         if let Some(token_with_buffer) = tokens.clone().get(&query.buy_token) {
@@ -363,9 +365,16 @@ fn get_splitted_trade_amounts_from_trading_vec(
     splitted_trade_amounts
 }
 
+#[derive(Debug)]
+struct TradeAmount {
+    must_satisfy_limit_price: bool,
+    sell_amount: U256,
+    buy_amount: U256,
+}
+
 fn get_trade_amounts_without_cow_volumes(
     splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>,
-) -> Result<HashMap<(H160, H160), (bool, U256, U256)>> {
+) -> Result<HashMap<(H160, H160), TradeAmount>> {
     let mut updated_traded_amounts = HashMap::new();
     for (pair, entry_amouts) in splitted_trade_amounts {
         let (src_token, dest_token) = pair;
@@ -380,39 +389,39 @@ fn get_trade_amounts_without_cow_volumes(
             if entry_amouts.1.gt(&opposite_amounts.0) {
                 updated_traded_amounts.insert(
                     (*dest_token, *src_token),
-                    (
-                        false,
-                        entry_amouts.1.checked_sub(opposite_amounts.0).unwrap(),
-                        U256::zero(),
-                    ),
+                    TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: entry_amouts.1.checked_sub(opposite_amounts.0).unwrap(),
+                        buy_amount: U256::zero(),
+                    },
                 );
             } else if entry_amouts.0.gt(&opposite_amounts.1) {
                 updated_traded_amounts.insert(
                     (*src_token, *dest_token),
-                    (
-                        false,
-                        entry_amouts.0.checked_sub(opposite_amounts.1).unwrap(),
-                        U256::zero(),
-                    ),
+                    TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: entry_amouts.0.checked_sub(opposite_amounts.1).unwrap(),
+                        buy_amount: U256::zero(),
+                    },
                 );
             } else {
                 updated_traded_amounts.insert(
                     (*src_token, *dest_token),
-                    (
-                        false,
-                        opposite_amounts.0.checked_sub(entry_amouts.1).unwrap(),
-                        U256::zero(),
-                    ),
+                    TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: opposite_amounts.0.checked_sub(entry_amouts.1).unwrap(),
+                        buy_amount: U256::zero(),
+                    },
                 );
             }
         } else {
             updated_traded_amounts.insert(
                 (*src_token, *dest_token),
-                (
-                    false,
-                    splitted_trade_amounts.get(pair).unwrap().0,
-                    splitted_trade_amounts.get(pair).unwrap().1,
-                ),
+                TradeAmount {
+                    must_satisfy_limit_price: false,
+                    sell_amount: splitted_trade_amounts.get(pair).unwrap().0,
+                    buy_amount: splitted_trade_amounts.get(pair).unwrap().1,
+                },
             );
         }
     }
@@ -421,7 +430,7 @@ fn get_trade_amounts_without_cow_volumes(
 
 fn contain_cow(splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>) -> bool {
     let mut pairs = HashMap::new();
-    for (pair, _) in splitted_trade_amounts {
+    for pair in splitted_trade_amounts.keys() {
         let (src_token, dest_token) = pair;
         let reverse_pair = (*dest_token, *src_token);
         if pairs.get(&reverse_pair).is_some() {

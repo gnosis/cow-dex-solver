@@ -14,17 +14,16 @@ use crate::token_list::Token;
 use crate::solve::paraswap_solver::api::Root;
 use crate::solve::solver_utils::Slippage;
 use crate::solve::zeroex_solver::api::SwapQuery;
-use ethcontract::batch::CallBatch;
-use ethcontract::prelude::*;
-use std::collections::BTreeMap;
-use std::env;
-
 use crate::solve::zeroex_solver::api::SwapResponse;
 use crate::solve::zeroex_solver::ZeroExSolver;
 use anyhow::{anyhow, Result};
+use ethcontract::batch::CallBatch;
+use ethcontract::prelude::*;
 use futures::future::join_all;
 use primitive_types::{H160, U256};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::env;
 use std::time::Duration;
 
 ethcontract::contract!("contracts/artifacts/ERC20.json");
@@ -52,34 +51,9 @@ pub async fn solve(
     // For simplicity, only solve for up to 20 orders
     orders.truncate(20);
 
-    // Step1: get splitted trade amounts per tokenpair for each order via paraswap dex-ag
-    let mut paraswap_futures = Vec::new();
-    for (i, order) in orders.iter() {
-        let client = reqwest::ClientBuilder::new()
-            .timeout(Duration::new(1, 0))
-            .user_agent("gp-v2-services/2.0.0")
-            .build()
-            .unwrap();
-        let paraswap_solver =
-            ParaswapSolver::new(vec![String::from("ParaSwapPool4")], client.clone());
-
-        paraswap_futures.push(get_paraswap_sub_trades_from_order(
-            *i,
-            paraswap_solver,
-            order,
-            tokens.clone(),
-        ));
-    }
-    type MachtedOrderBracket = (
-        Vec<Vec<(usize, OrderModel)>>,
-        Vec<Vec<(H160, H160, U256, U256)>>,
-    );
-    let (matched_orders, single_trade_results): MachtedOrderBracket =
-        join_all(paraswap_futures).await.into_iter().unzip();
-    let mut matched_orders: Vec<(usize, OrderModel)> =
-        matched_orders.into_iter().flatten().collect();
-
-    let single_trade_results = single_trade_results.into_iter().flatten().collect();
+    // Step1: get splitted trade amounts per token pair for each order via paraswap dex-ag
+    let (mut matched_orders, single_trade_results) =
+        get_matchable_orders_and_subtrades(orders.clone(), tokens.clone()).await;
     let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
     for (pair, entry_amouts) in &splitted_trade_amounts {
         tracing::debug!(
@@ -122,100 +96,15 @@ pub async fn solve(
     }
 
     // 3rd step: Get trades from zeroEx of left-over amounts
-    let zeroex_futures = updated_traded_amounts
-        .into_iter()
-        .map(|(pair, trade_amount)| {
-            let cloned_api_key = api_key.clone();
-            async move {
-                let client = reqwest::ClientBuilder::new()
-                    .timeout(Duration::new(1, 0))
-                    .user_agent("gp-v2-services/2.0.0")
-                    .build()
-                    .unwrap();
-                let zeroex_solver =
-                    ZeroExSolver::new(1u64, cloned_api_key, client.clone()).unwrap();
-
-                let (src_token, dest_token) = pair;
-                let query = SwapQuery {
-                    sell_token: src_token,
-                    buy_token: dest_token,
-                    sell_amount: Some(trade_amount.sell_amount),
-                    buy_amount: None,
-                    slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
-                    skip_validation: Some(true),
-                };
-                (
-                    trade_amount,
-                    query.clone(),
-                    zeroex_solver.client.get_swap(query).await,
-                )
-            }
-        });
-    let swap_results = join_all(zeroex_futures).await;
-    let mut swap_results: Vec<(SwapQuery, SwapResponse)> = swap_results
-        .iter()
-        .map(|(trade_amount, query, swap)| match swap {
-            Ok(swap) => {
-                if trade_amount.must_satisfy_limit_price
-                    && swap
-                        .sell_amount
-                        .checked_mul(trade_amount.buy_amount)
-                        .gt(&trade_amount.sell_amount.checked_mul(swap.buy_amount))
-                {
-                    return Err(anyhow!("swap price not good enough"));
-                }
-                Ok((query.clone(), swap.clone()))
-            }
-            Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
-        })
-        .filter_map(|s| s.ok())
-        .collect::<Vec<(SwapQuery, SwapResponse)>>();
-
+    let mut swap_results = get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await;
     if !contains_cow {
-        matched_orders = Vec::new();
-        for (i, order) in orders.iter() {
-            if swap_results.clone().into_iter().any(|(query, swap)| {
-                swap.sell_amount == order.sell_amount
-                    && order.buy_token == query.buy_token
-                    && order.sell_token.eq(&order.sell_token)
-            }) {
-                matched_orders.push((*i, order.clone()));
-            }
-        }
+        matched_orders = update_matched_orders_in_case_of_no_cow(orders, &swap_results);
     }
 
     // 4th step: Get all approvals via a batch requests for the different swap
     let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
     let web3 = Web3::new(http);
-    let settlement_contract_address: H160 =
-        "9008d19f58aabd9ed0d60971565aa8510560ab41".parse().unwrap();
-    let mut batch = CallBatch::new(web3.transport());
-    let mut calls = Vec::new();
-    for (query, swap) in swap_results.clone() {
-        let token = ERC20::at(&web3, query.sell_token);
-        calls.push(
-            token
-                .allowance(settlement_contract_address, swap.allowance_target)
-                .batch_call(&mut batch),
-        )
-    }
-    batch.execute_all(usize::MAX).await;
-    let mut allowances: HashMap<(Address, Address), U256> = HashMap::new();
-    for (id, call) in calls.into_iter().enumerate() {
-        let call_result = call.await.unwrap_or_else(|_| U256::zero());
-        if let Some((query, swap)) = swap_results.clone().get(id) {
-            tracing::debug!(
-                "Call {} returned {} for query:{:?} and swap:{:?}",
-                id,
-                call_result,
-                query,
-                swap
-            );
-            allowances.insert((query.sell_token, swap.allowance_target), call_result);
-        } else {
-            tracing::debug!("Call {} returned {}", id, call_result);
-        }
-    }
+    let mut allowances = get_allowances_for_tokens_involved(&swap_results).await;
 
     // 5th step: Build settlements with price and interactions
     let mut solution = SettledBatchAuctionModel::default();
@@ -230,28 +119,33 @@ pub async fn solve(
         ) {
             Ok(()) => {}
             Err(err) => {
-                tracing::debug!("Inserting a price failed due to {:?}", err);
+                tracing::debug!(
+                    "Inserting a price failed due to {:?}, returning trivial solution",
+                    err
+                );
                 return Ok(SettledBatchAuctionModel::default());
             }
         }
 
-        let mut available_buffer = U256::zero();
-        if let Some(token_with_buffer) = tokens.clone().get(&query.buy_token) {
-            if let Some(buffer) = token_with_buffer.internal_buffer {
-                available_buffer = buffer;
-            }
-        }
+        let available_buffer = tokens
+            .clone()
+            .get(&query.buy_token)
+            .unwrap_or(&TokenInfoModel::default())
+            .internal_buffer
+            .unwrap_or_else(U256::zero);
         if swap.buy_amount < available_buffer
             && swap_tokens_are_tradable_buffer_tokens(&query, &tradable_buffer_token_list)
         {
             // trade only against internal buffer
             if let Some(mut token_info) = tokens.get_mut(&query.buy_token) {
-                if let Some(buffer) = token_info.internal_buffer {
-                    token_info.internal_buffer = buffer.checked_sub(available_buffer);
-                }
+                token_info.internal_buffer = available_buffer.checked_sub(swap.buy_amount);
             }
             if let Some(mut token_info) = tokens.get_mut(&query.sell_token) {
-                token_info.internal_buffer = Some(swap.sell_amount);
+                if let Some(buffer) = token_info.internal_buffer {
+                    token_info.internal_buffer = buffer.checked_add(swap.sell_amount);
+                } else {
+                    token_info.internal_buffer = Some(swap.sell_amount);
+                }
             }
         } else {
             // use external trade
@@ -301,6 +195,148 @@ pub async fn solve(
     }
     tracing::info!("Found solution: {:?}", solution);
     Ok(solution)
+}
+
+async fn get_allowances_for_tokens_involved(
+    swap_results: &[(SwapQuery, SwapResponse)],
+) -> HashMap<(Address, Address), U256> {
+    let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
+    let web3 = Web3::new(http);
+    let settlement_contract_address: H160 =
+        "9008d19f58aabd9ed0d60971565aa8510560ab41".parse().unwrap();
+    let mut batch = CallBatch::new(web3.transport());
+    let mut calls = Vec::new();
+    for (query, swap) in swap_results {
+        let token = ERC20::at(&web3, query.sell_token);
+        calls.push(
+            token
+                .allowance(settlement_contract_address, swap.allowance_target)
+                .batch_call(&mut batch),
+        )
+    }
+    batch.execute_all(usize::MAX).await;
+    let mut allowances: HashMap<(Address, Address), U256> = HashMap::new();
+    for (id, call) in calls.into_iter().enumerate() {
+        let call_result = call.await.unwrap_or_else(|_| U256::zero());
+        if let Some((query, swap)) = swap_results.get(id) {
+            tracing::debug!(
+                "Call {} returned {} for query:{:?} and swap:{:?}",
+                id,
+                call_result,
+                query,
+                swap
+            );
+            allowances.insert((query.sell_token, swap.allowance_target), call_result);
+        } else {
+            tracing::debug!("Call {} returned {}", id, call_result);
+        }
+    }
+    allowances
+}
+
+fn update_matched_orders_in_case_of_no_cow(
+    orders: Vec<(usize, OrderModel)>,
+    swap_results: &[(SwapQuery, SwapResponse)],
+) -> Vec<(usize, OrderModel)> {
+    let mut matched_orders = Vec::new();
+    for (i, order) in orders.iter() {
+        if swap_results.iter().any(|(query, swap)| {
+            swap.sell_amount == order.sell_amount
+                && order.buy_token == query.buy_token
+                && order.sell_token.eq(&order.sell_token)
+        }) {
+            matched_orders.push((*i, order.clone()));
+        }
+    }
+    matched_orders
+}
+
+async fn get_swaps_for_left_over_amounts(
+    updated_traded_amounts: HashMap<(H160, H160), TradeAmount>,
+    api_key: Option<String>,
+) -> Vec<(SwapQuery, SwapResponse)> {
+    let zeroex_futures = updated_traded_amounts
+        .into_iter()
+        .map(|(pair, trade_amount)| {
+            let cloned_api_key = api_key.clone();
+            async move {
+                let client = reqwest::ClientBuilder::new()
+                    .timeout(Duration::new(1, 0))
+                    .user_agent("gp-v2-services/2.0.0")
+                    .build()
+                    .unwrap();
+                let zeroex_solver =
+                    ZeroExSolver::new(1u64, cloned_api_key, client.clone()).unwrap();
+
+                let (src_token, dest_token) = pair;
+                let query = SwapQuery {
+                    sell_token: src_token,
+                    buy_token: dest_token,
+                    sell_amount: Some(trade_amount.sell_amount),
+                    buy_amount: None,
+                    slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+                    skip_validation: Some(true),
+                };
+                (
+                    trade_amount,
+                    query.clone(),
+                    zeroex_solver.client.get_swap(query).await,
+                )
+            }
+        });
+    let swap_results = join_all(zeroex_futures).await;
+    swap_results
+        .iter()
+        .map(|(trade_amount, query, swap)| match swap {
+            Ok(swap) => {
+                if trade_amount.must_satisfy_limit_price
+                    && swap
+                        .sell_amount
+                        .checked_mul(trade_amount.buy_amount)
+                        .gt(&trade_amount.sell_amount.checked_mul(swap.buy_amount))
+                {
+                    return Err(anyhow!("swap price not good enough"));
+                }
+                Ok((query.clone(), swap.clone()))
+            }
+            Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
+        })
+        .filter_map(|s| s.ok())
+        .collect::<Vec<(SwapQuery, SwapResponse)>>()
+}
+
+async fn get_matchable_orders_and_subtrades(
+    orders: Vec<(usize, OrderModel)>,
+    tokens: BTreeMap<H160, TokenInfoModel>,
+) -> (Vec<(usize, OrderModel)>, Vec<(H160, H160, U256, U256)>) {
+    let mut paraswap_futures = Vec::new();
+    for (i, order) in orders.iter() {
+        let client = reqwest::ClientBuilder::new()
+            .timeout(Duration::new(1, 0))
+            .user_agent("gp-v2-services/2.0.0")
+            .build()
+            .unwrap();
+        let paraswap_solver =
+            ParaswapSolver::new(vec![String::from("ParaSwapPool4")], client.clone());
+
+        paraswap_futures.push(get_paraswap_sub_trades_from_order(
+            *i,
+            paraswap_solver,
+            order,
+            tokens.clone(),
+        ));
+    }
+    type MachtedOrderBracket = (
+        Vec<Vec<(usize, OrderModel)>>,
+        Vec<Vec<(H160, H160, U256, U256)>>,
+    );
+    let (matched_orders, single_trade_results): MachtedOrderBracket =
+        join_all(paraswap_futures).await.into_iter().unzip();
+    let matched_orders: Vec<(usize, OrderModel)> = matched_orders.into_iter().flatten().collect();
+
+    let single_trade_results: Vec<(H160, H160, U256, U256)> =
+        single_trade_results.into_iter().flatten().collect();
+    (matched_orders, single_trade_results)
 }
 
 fn swap_tokens_are_tradable_buffer_tokens(

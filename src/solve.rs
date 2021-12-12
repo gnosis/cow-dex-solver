@@ -7,6 +7,9 @@ use crate::models::batch_auction_model::OrderModel;
 use crate::models::batch_auction_model::SettledBatchAuctionModel;
 use crate::models::batch_auction_model::{BatchAuctionModel, TokenInfoModel};
 use crate::solve::paraswap_solver::ParaswapSolver;
+use crate::token_list::get_buffer_tradable_token_list;
+use crate::token_list::BufferTradingTokenList;
+use crate::token_list::Token;
 
 use crate::solve::paraswap_solver::api::Root;
 use crate::solve::solver_utils::Slippage;
@@ -216,6 +219,7 @@ pub async fn solve(
 
     // 5th step: Build settlements with price and interactions
     let mut solution = SettledBatchAuctionModel::default();
+    let tradable_buffer_token_list = get_buffer_tradable_token_list();
     while !swap_results.is_empty() {
         let (query, mut swap) = swap_results.pop().unwrap();
         match insert_new_price(
@@ -237,7 +241,9 @@ pub async fn solve(
                 available_buffer = buffer;
             }
         }
-        if swap.buy_amount < available_buffer {
+        if swap.buy_amount < available_buffer
+            && swap_tokens_are_tradable_buffer_tokens(&query, &tradable_buffer_token_list)
+        {
             // trade only against internal buffer
             if let Some(mut token_info) = tokens.get_mut(&query.buy_token) {
                 if let Some(buffer) = token_info.internal_buffer {
@@ -295,6 +301,19 @@ pub async fn solve(
     }
     tracing::info!("Found solution: {:?}", solution);
     Ok(solution)
+}
+
+fn swap_tokens_are_tradable_buffer_tokens(
+    query: &SwapQuery,
+    tradable_buffer_token_list: &BufferTradingTokenList,
+) -> bool {
+    tradable_buffer_token_list.tokens.contains(&Token {
+        address: query.sell_token,
+        chain_id: 1u64,
+    }) && tradable_buffer_token_list.tokens.contains(&Token {
+        address: query.buy_token,
+        chain_id: 1u64,
+    })
 }
 
 async fn get_paraswap_sub_trades_from_order(

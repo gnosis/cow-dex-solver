@@ -37,6 +37,12 @@ pub async fn solve(
         orders, mut tokens, ..
     }: BatchAuctionModel,
 ) -> Result<SettledBatchAuctionModel> {
+    tracing::debug!(
+        " Trying to solve the following instance: with orders {:?} and the tokens: {:?}",
+        orders,
+        tokens
+    );
+
     let api_key;
     if env::var("ZEROEX_API_KEY").is_err() {
         api_key = None;
@@ -514,6 +520,7 @@ fn over_write_eth_with_weth_token(token: H160) -> H160 {
     }
 }
 
+const SCALING_FACTOR: u64 = 10000u64;
 pub fn insert_new_price(
     solution: &mut SettledBatchAuctionModel,
     splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>,
@@ -564,8 +571,14 @@ pub fn insert_new_price(
             );
         }
         (None, None) => {
-            solution.prices.insert(query.sell_token, buy_amount);
-            solution.prices.insert(query.buy_token, sell_amount);
+            solution.prices.insert(
+                query.sell_token,
+                buy_amount.checked_mul(U256::from(SCALING_FACTOR)).unwrap(),
+            );
+            solution.prices.insert(
+                query.buy_token,
+                sell_amount.checked_mul(U256::from(SCALING_FACTOR)).unwrap(),
+            );
         }
     }
     Ok(())

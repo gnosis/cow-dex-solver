@@ -3,11 +3,16 @@ use ethcontract::Address;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
+use std::env;
 use std::fs::File;
 use std::io::Read;
 
 pub fn get_buffer_tradable_token_list() -> BufferTradingTokenList {
-    let mut file = File::open("./token_list_for_buffer_trading.json").unwrap();
+    let mut file = File::open(
+        env::var("TRADEABLE_BUFFER_TOKENS")
+            .unwrap_or_else(|_| "./data/token_list_for_buffer_trading.json".to_string()),
+    )
+    .unwrap();
     let mut data = String::new();
     file.read_to_string(&mut data).unwrap();
 

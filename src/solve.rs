@@ -43,12 +43,7 @@ pub async fn solve(
         tokens
     );
 
-    let api_key;
-    if env::var("ZEROEX_API_KEY").is_err() {
-        api_key = None;
-    } else {
-        api_key = Some(env::var("ZEROEX_API_KEY")?);
-    }
+    let api_key = env::var("ZEROEX_API_KEY").map(Some).unwrap_or(None);
     if orders.is_empty() {
         return Ok(SettledBatchAuctionModel::default());
     }
@@ -61,11 +56,11 @@ pub async fn solve(
     let (mut matched_orders, single_trade_results) =
         get_matchable_orders_and_subtrades(orders.clone(), tokens.clone()).await;
     let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
-    for (pair, entry_amouts) in &splitted_trade_amounts {
+    for (pair, entry_amounts) in &splitted_trade_amounts {
         tracing::debug!(
             " Before cow merge: trade on pair {:?} with values {:?}",
             pair,
-            entry_amouts
+            entry_amounts
         );
     }
 
@@ -77,11 +72,11 @@ pub async fn solve(
         // if there is a cow volume, we try to remove it
         updated_traded_amounts = get_trade_amounts_without_cow_volumes(&splitted_trade_amounts)?;
 
-        for (pair, entry_amouts) in &updated_traded_amounts {
+        for (pair, entry_amounts) in &updated_traded_amounts {
             tracing::debug!(
                 " After cow merge: trade on pair {:?} with values {:?}",
                 pair,
-                entry_amouts
+                entry_amounts,
             );
         }
     } else {

@@ -37,11 +37,7 @@ pub async fn solve(
         orders, mut tokens, ..
     }: BatchAuctionModel,
 ) -> Result<SettledBatchAuctionModel> {
-    tracing::debug!(
-        " Trying to solve the following instance: with orders {:?} and the tokens: {:?}",
-        orders,
-        tokens
-    );
+    tracing::debug!("    {:?} and the tokens: {:?}", orders, tokens);
 
     let api_key = env::var("ZEROEX_API_KEY").map(Some).unwrap_or(None);
     if orders.is_empty() {
@@ -81,19 +77,30 @@ pub async fn solve(
         }
     } else {
         tracing::debug!("Falling back to normal zeroEx solver");
-
-        let mut order_hashmap = HashMap::new();
+        let mut order_hashmap: HashMap<(H160, H160), TradeAmount> = HashMap::new();
         for (_, order) in orders.clone().iter() {
-            order_hashmap.insert(
-                (order.sell_token, order.buy_token),
-                TradeAmount {
-                    must_satisfy_limit_price: true,
-                    sell_amount: order.sell_amount,
-                    buy_amount: order.buy_amount,
-                },
-            );
+            if order_hashmap
+                .get_mut(&(order.sell_token, order.buy_token))
+                .is_some()
+            {
+                tracing::debug!(
+                    "Can not deal with potential cow, but non-found cow on sell and buy tokens of the following order: {:?}",
+                    order
+                );
+                return Ok(SettledBatchAuctionModel::default());
+            } else {
+                order_hashmap.insert(
+                    (order.sell_token, order.buy_token),
+                    TradeAmount {
+                        must_satisfy_limit_price: true,
+                        sell_amount: order.sell_amount,
+                        buy_amount: order.buy_amount,
+                    },
+                );
+            }
         }
         updated_traded_amounts = order_hashmap;
+        println!("here I am: {:?}", updated_traded_amounts);
     }
 
     // 3rd step: Get trades from zeroEx of left-over amounts
@@ -489,10 +496,11 @@ fn contain_cow(splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>) -> 
     for pair in splitted_trade_amounts.keys() {
         let (src_token, dest_token) = pair;
         let reverse_pair = (*dest_token, *src_token);
-        if pairs.get(&reverse_pair).is_some() {
+        if pairs.get(&reverse_pair.clone()).is_some() {
             return true;
         }
-        pairs.insert(pair, true);
+        pairs.insert(*pair, true);
+        pairs.insert(reverse_pair, true);
     }
     false
 }
@@ -852,6 +860,41 @@ mod tests {
         };
         let solution = solve(BatchAuctionModel {
             orders: BTreeMap::from_iter(IntoIter::new([(1, bal_dai_order), (2, dai_gno_order)])),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        println!("{:#?}", solution);
+    }
+    #[tokio::test]
+    #[ignore]
+    async fn solve_two_orders_into_same_direction() {
+        let free: H160 = "4cd0c43b0d53bc318cc5342b77eb6f124e47f526".parse().unwrap();
+        let weth: H160 = "c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".parse().unwrap();
+
+        let free_weth_order = OrderModel {
+            sell_token: free,
+            buy_token: weth,
+            sell_amount: 975_836_594_684_055_780_624_887u128.into(),
+            buy_amount: 1_000_000_000_000_000_000u128.into(),
+            is_sell_order: false,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+        let solution = solve(BatchAuctionModel {
+            orders: BTreeMap::from_iter(IntoIter::new([
+                (1, free_weth_order.clone()),
+                (2, free_weth_order),
+            ])),
             ..Default::default()
         })
         .await

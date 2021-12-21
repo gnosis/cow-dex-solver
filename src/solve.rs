@@ -67,7 +67,17 @@ pub async fn solve(
     if contains_cow {
         tracing::debug!("Found cow and trying to solve it");
         // if there is a cow volume, we try to remove it
-        updated_traded_amounts = get_trade_amounts_without_cow_volumes(&splitted_trade_amounts)?;
+        updated_traded_amounts =
+            match get_trade_amounts_without_cow_volumes(&splitted_trade_amounts) {
+                Ok(traded_amounts) => traded_amounts,
+                Err(err) => {
+                    tracing::debug!(
+                        "Error from zeroEx api for trading left over amounts: {:?}",
+                        err
+                    );
+                    return Ok(SettledBatchAuctionModel::default());
+                }
+            };
 
         for (pair, entry_amounts) in &updated_traded_amounts {
             tracing::debug!(
@@ -309,7 +319,8 @@ async fn get_swaps_for_left_over_amounts(
             }
             Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
         })
-        .collect::<Result<Vec<(SwapQuery, SwapResponse)>>>()
+        .filter(|x| x.is_ok() || format!("{:?}", x).contains("error from zeroex"))
+        .collect()
 }
 
 async fn get_matchable_orders_and_subtrades(
@@ -333,9 +344,18 @@ async fn get_matchable_orders_and_subtrades(
             tokens.clone(),
         ));
     }
-    type MachtedOrderBracket = (Vec<Vec<(usize, OrderModel)>>, Vec<Vec<SubTrade>>);
-    let (matched_orders, single_trade_results): MachtedOrderBracket =
-        join_all(paraswap_futures).await.into_iter().unzip();
+    type OrdersAndSubTradesVector = Vec<(Vec<(usize, OrderModel)>, Vec<SubTrade>)>;
+    let awaited_paraswap_futures: Result<OrdersAndSubTradesVector, anyhow::Error> =
+        join_all(paraswap_futures).await.into_iter().collect();
+    type MatchedOrderBracket = (Vec<Vec<(usize, OrderModel)>>, Vec<Vec<SubTrade>>);
+    let (matched_orders, single_trade_results): MatchedOrderBracket;
+    if let Ok(paraswap_futures_results) = awaited_paraswap_futures {
+        let paraswap_future_results_unzipped = paraswap_futures_results.into_iter().unzip();
+        matched_orders = paraswap_future_results_unzipped.0;
+        single_trade_results = paraswap_future_results_unzipped.1;
+    } else {
+        return (Vec::new(), Vec::new());
+    }
     let matched_orders: Vec<(usize, OrderModel)> = matched_orders.into_iter().flatten().collect();
 
     let single_trade_results: Vec<SubTrade> = single_trade_results.into_iter().flatten().collect();
@@ -367,7 +387,7 @@ async fn get_paraswap_sub_trades_from_order(
     paraswap_solver: ParaswapSolver,
     order: &OrderModel,
     tokens: BTreeMap<primitive_types::H160, TokenInfoModel>,
-) -> (Vec<(usize, OrderModel)>, Vec<SubTrade>) {
+) -> Result<(Vec<(usize, OrderModel)>, Vec<SubTrade>)> {
     // get tokeninfo from ordermodel
     let (price_response, _amount) = match paraswap_solver
         .get_full_price_info_for_order(order, tokens)
@@ -380,7 +400,7 @@ async fn get_paraswap_sub_trades_from_order(
                 order,
                 err
             );
-            return (Vec::new(), Vec::new());
+            return Err(anyhow!("price estimation failed"));
         }
     };
     let mut sub_trades = Vec::new();
@@ -400,7 +420,7 @@ async fn get_paraswap_sub_trades_from_order(
             }
         }
     }
-    ((matched_orders), sub_trades)
+    Ok(((matched_orders), sub_trades))
 }
 fn satisfies_limit_price_with_buffer(price_response: &Root, order: &OrderModel) -> bool {
     (price_response.price_route.dest_amount.ge(&order

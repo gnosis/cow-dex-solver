@@ -153,7 +153,7 @@ pub struct PriceRoute {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BestRoute {
-    pub percent: i64,
+    pub percent: f64,
     pub swaps: Vec<Swap>,
 }
 
@@ -175,7 +175,7 @@ pub struct SwapExchange {
     #[serde(with = "u256_decimal")]
     pub dest_amount: U256,
     pub exchange: String,
-    pub percent: i64,
+    pub percent: f64,
     #[serde(with = "u256_decimal")]
     pub src_amount: U256,
 }

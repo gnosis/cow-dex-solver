@@ -51,18 +51,19 @@ pub async fn solve(
     // Step1: get splitted trade amounts per token pair for each order via paraswap dex-ag
     let (mut matched_orders, single_trade_results) =
         get_matchable_orders_and_subtrades(orders.clone(), tokens.clone()).await;
-    let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
-    for (pair, entry_amounts) in &splitted_trade_amounts {
+    tracing::debug!("single_trade_results: {:?}", single_trade_results);
+    let contains_cow = contain_cow(&single_trade_results);
+    for sub_trade in single_trade_results.iter() {
         tracing::debug!(
             " Before cow merge: trade on pair {:?} with values {:?}",
-            pair,
-            entry_amounts
+            (sub_trade.src_token, sub_trade.dest_token),
+            (sub_trade.src_amount, sub_trade.dest_amount)
         );
     }
+    let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
 
     // 2nd step: Removing obvious cow volume from splitted traded amounts, by matching opposite volume
     let updated_traded_amounts;
-    let contains_cow = contain_cow(&splitted_trade_amounts);
     if contains_cow {
         tracing::debug!("Found cow and trying to solve it");
         // if there is a cow volume, we try to remove it
@@ -100,11 +101,10 @@ pub async fn solve(
             }
         }
         updated_traded_amounts = order_hashmap;
-        println!("here I am: {:?}", updated_traded_amounts);
     }
 
     // 3rd step: Get trades from zeroEx of left-over amounts
-    let mut swap_results = get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await;
+    let mut swap_results = get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await?;
     if !contains_cow {
         matched_orders = update_matched_orders_in_case_of_no_cow(orders, &swap_results);
     }
@@ -262,7 +262,7 @@ fn update_matched_orders_in_case_of_no_cow(
 async fn get_swaps_for_left_over_amounts(
     updated_traded_amounts: HashMap<(H160, H160), TradeAmount>,
     api_key: Option<String>,
-) -> Vec<(SwapQuery, SwapResponse)> {
+) -> Result<Vec<(SwapQuery, SwapResponse)>> {
     let zeroex_futures = updated_traded_amounts
         .into_iter()
         .map(|(pair, trade_amount)| {
@@ -309,14 +309,13 @@ async fn get_swaps_for_left_over_amounts(
             }
             Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
         })
-        .filter_map(|s| s.ok())
-        .collect::<Vec<(SwapQuery, SwapResponse)>>()
+        .collect::<Result<Vec<(SwapQuery, SwapResponse)>>>()
 }
 
 async fn get_matchable_orders_and_subtrades(
     orders: Vec<(usize, OrderModel)>,
     tokens: BTreeMap<H160, TokenInfoModel>,
-) -> (Vec<(usize, OrderModel)>, Vec<(H160, H160, U256, U256)>) {
+) -> (Vec<(usize, OrderModel)>, Vec<SubTrade>) {
     let mut paraswap_futures = Vec::new();
     for (i, order) in orders.iter() {
         let client = reqwest::ClientBuilder::new()
@@ -334,16 +333,12 @@ async fn get_matchable_orders_and_subtrades(
             tokens.clone(),
         ));
     }
-    type MachtedOrderBracket = (
-        Vec<Vec<(usize, OrderModel)>>,
-        Vec<Vec<(H160, H160, U256, U256)>>,
-    );
+    type MachtedOrderBracket = (Vec<Vec<(usize, OrderModel)>>, Vec<Vec<SubTrade>>);
     let (matched_orders, single_trade_results): MachtedOrderBracket =
         join_all(paraswap_futures).await.into_iter().unzip();
     let matched_orders: Vec<(usize, OrderModel)> = matched_orders.into_iter().flatten().collect();
 
-    let single_trade_results: Vec<(H160, H160, U256, U256)> =
-        single_trade_results.into_iter().flatten().collect();
+    let single_trade_results: Vec<SubTrade> = single_trade_results.into_iter().flatten().collect();
     (matched_orders, single_trade_results)
 }
 
@@ -360,12 +355,19 @@ fn swap_tokens_are_tradable_buffer_tokens(
     })
 }
 
+#[derive(Clone, Debug)]
+struct SubTrade {
+    pub src_token: H160,
+    pub dest_token: H160,
+    pub src_amount: U256,
+    pub dest_amount: U256,
+}
 async fn get_paraswap_sub_trades_from_order(
     index: usize,
     paraswap_solver: ParaswapSolver,
     order: &OrderModel,
     tokens: BTreeMap<primitive_types::H160, TokenInfoModel>,
-) -> (Vec<(usize, OrderModel)>, Vec<(H160, H160, U256, U256)>) {
+) -> (Vec<(usize, OrderModel)>, Vec<SubTrade>) {
     // get tokeninfo from ordermodel
     let (price_response, _amount) = match paraswap_solver
         .get_full_price_info_for_order(order, tokens)
@@ -389,7 +391,12 @@ async fn get_paraswap_sub_trades_from_order(
             for trade in &swap.swap_exchanges {
                 let src_token = over_write_eth_with_weth_token(swap.src_token);
                 let dest_token = over_write_eth_with_weth_token(swap.dest_token);
-                sub_trades.push((src_token, dest_token, trade.src_amount, trade.dest_amount));
+                sub_trades.push(SubTrade {
+                    src_token,
+                    dest_token,
+                    src_amount: trade.src_amount,
+                    dest_amount: trade.dest_amount,
+                });
             }
         }
     }
@@ -413,17 +420,17 @@ fn satisfies_limit_price_with_buffer(price_response: &Root, order: &OrderModel) 
 }
 
 fn get_splitted_trade_amounts_from_trading_vec(
-    single_trade_results: Vec<(H160, H160, U256, U256)>,
+    single_trade_results: Vec<SubTrade>,
 ) -> HashMap<(H160, H160), (U256, U256)> {
     let mut splitted_trade_amounts: HashMap<(H160, H160), (U256, U256)> = HashMap::new();
-    for (src_token, dest_token, src_amount, dest_amount) in single_trade_results {
+    for sub_trade in single_trade_results {
         splitted_trade_amounts
-            .entry((src_token, dest_token))
+            .entry((sub_trade.src_token, sub_trade.dest_token))
             .and_modify(|(in_amounts, out_amounts)| {
-                in_amounts.checked_add(src_amount).unwrap();
-                out_amounts.checked_add(dest_amount).unwrap();
+                in_amounts.checked_add(sub_trade.src_amount).unwrap();
+                out_amounts.checked_add(sub_trade.dest_amount).unwrap();
             })
-            .or_insert((src_amount, dest_amount));
+            .or_insert((sub_trade.src_amount, sub_trade.dest_amount));
     }
     splitted_trade_amounts
 }
@@ -491,15 +498,15 @@ fn get_trade_amounts_without_cow_volumes(
     Ok(updated_traded_amounts)
 }
 
-fn contain_cow(splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>) -> bool {
+fn contain_cow(splitted_trade_amounts: &[SubTrade]) -> bool {
     let mut pairs = HashMap::new();
-    for pair in splitted_trade_amounts.keys() {
-        let (src_token, dest_token) = pair;
-        let reverse_pair = (*dest_token, *src_token);
+    for sub_trade in splitted_trade_amounts.iter() {
+        let pair = (sub_trade.src_token, sub_trade.dest_token);
+        let reverse_pair = (sub_trade.dest_token, sub_trade.src_token);
         if pairs.get(&reverse_pair.clone()).is_some() {
             return true;
         }
-        pairs.insert(*pair, true);
+        pairs.insert(pair, true);
         pairs.insert(reverse_pair, true);
     }
     false
@@ -594,6 +601,213 @@ mod tests {
     use crate::models::batch_auction_model::FeeModel;
     use core::array::IntoIter;
     use std::collections::BTreeMap;
+    use tracing_test::traced_test;
+
+    #[tokio::test]
+    #[traced_test]
+    #[ignore]
+    async fn solve_with_dai_gno_weth_order() {
+        let dai: H160 = "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap();
+        let gno: H160 = "6810e776880c02933d47db1b9fc05908e5386b96".parse().unwrap();
+        let weth: H160 = "c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".parse().unwrap();
+
+        let dai_gno_order = OrderModel {
+            sell_token: dai,
+            buy_token: gno,
+            sell_amount: 200_000_000_000_000_000_000_000u128.into(),
+            buy_amount: 1u128.into(),
+            is_sell_order: true,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+
+        let gno_weth_order = OrderModel {
+            sell_token: gno,
+            buy_token: weth,
+            sell_amount: 100_000_000_000_000_000_000u128.into(),
+            buy_amount: 1u128.into(),
+            is_sell_order: true,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+        let solution = solve(BatchAuctionModel {
+            tokens: BTreeMap::from_iter(IntoIter::new([
+                (
+                    dai,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    gno,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    weth,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+            ])),
+            orders: BTreeMap::from_iter(IntoIter::new([(1, gno_weth_order), (2, dai_gno_order)])),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        println!("{:#?}", solution);
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    #[ignore]
+    async fn solve_bal_gno_weth_cows() {
+        // let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
+        // let web3 = Web3::new(http);
+        let dai: H160 = "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap();
+        let bal: H160 = "ba100000625a3754423978a60c9317c58a424e3d".parse().unwrap();
+        let gno: H160 = "6810e776880c02933d47db1b9fc05908e5386b96".parse().unwrap();
+
+        let dai_gno_order = OrderModel {
+            sell_token: dai,
+            buy_token: gno,
+            sell_amount: 15_000_000_000_000_000_000_000u128.into(),
+            buy_amount: 1u128.into(),
+            is_sell_order: true,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+        let bal_dai_order = OrderModel {
+            sell_token: gno,
+            buy_token: bal,
+            sell_amount: 1_000_000_000_000_000_000_000u128.into(),
+            buy_amount: 1u128.into(),
+            is_sell_order: true,
+            allow_partial_fill: false,
+            is_liquidity_order: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+        let solution = solve(BatchAuctionModel {
+            tokens: BTreeMap::from_iter(IntoIter::new([
+                (
+                    dai,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    gno,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    bal,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+            ])),
+            orders: BTreeMap::from_iter(IntoIter::new([(1, bal_dai_order), (2, dai_gno_order)])),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        println!("{:#?}", solution);
+    }
+    #[tokio::test]
+    #[traced_test]
+    #[ignore]
+    async fn solve_two_orders_into_same_direction() {
+        let free: H160 = "4cd0c43b0d53bc318cc5342b77eb6f124e47f526".parse().unwrap();
+        let weth: H160 = "c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".parse().unwrap();
+
+        let free_weth_order = OrderModel {
+            sell_token: free,
+            buy_token: weth,
+            sell_amount: 1_975_836_594_684_055_780_624_887u128.into(),
+            buy_amount: 1_000_000_000_000_000_000u128.into(),
+            is_sell_order: false,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+        let solution = solve(BatchAuctionModel {
+            tokens: BTreeMap::from_iter(IntoIter::new([
+                (
+                    free,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    weth,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+            ])),
+            orders: BTreeMap::from_iter(IntoIter::new([
+                (1, free_weth_order.clone()),
+                (2, free_weth_order),
+            ])),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        println!("{:#?}", solution);
+    }
+
     //     #[test]
     //     fn price_insert_without_cow_volume_inserts_new_prices_with_correct_ratios() {
     //         let unrelated_token = shared::addr!("9f8f72aa9304c8b593d555f12ef6589cc3a579a2");
@@ -763,143 +977,4 @@ mod tests {
     //             Some(U256::from_dec_str("5").unwrap())
     //         );
     //     }
-    #[tokio::test]
-    #[ignore]
-    async fn solve_with_dai_gno_weth_order() {
-        let dai: H160 = "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap();
-        let gno: H160 = "6810e776880c02933d47db1b9fc05908e5386b96".parse().unwrap();
-        let weth: H160 = "c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".parse().unwrap();
-
-        let dai_gno_order = OrderModel {
-            sell_token: dai,
-            buy_token: gno,
-            sell_amount: 200_000_000_000_000_000_000_000u128.into(),
-            buy_amount: 1u128.into(),
-            is_sell_order: true,
-            is_liquidity_order: false,
-            allow_partial_fill: false,
-            cost: CostModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-            fee: FeeModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-        };
-
-        let gno_weth_order = OrderModel {
-            sell_token: gno,
-            buy_token: weth,
-            sell_amount: 100_000_000_000_000_000_000u128.into(),
-            buy_amount: 1u128.into(),
-            is_sell_order: true,
-            is_liquidity_order: false,
-            allow_partial_fill: false,
-            cost: CostModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-            fee: FeeModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-        };
-        let solution = solve(BatchAuctionModel {
-            orders: BTreeMap::from_iter(IntoIter::new([(1, gno_weth_order), (2, dai_gno_order)])),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-
-        println!("{:#?}", solution);
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn solve_bal_gno_weth_cows() {
-        // let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
-        // let web3 = Web3::new(http);
-        let dai: H160 = "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap();
-        let bal: H160 = "ba100000625a3754423978a60c9317c58a424e3d".parse().unwrap();
-        let gno: H160 = "6810e776880c02933d47db1b9fc05908e5386b96".parse().unwrap();
-
-        let dai_gno_order = OrderModel {
-            sell_token: dai,
-            buy_token: gno,
-            sell_amount: 15_000_000_000_000_000_000_000u128.into(),
-            buy_amount: 1u128.into(),
-            is_sell_order: true,
-            is_liquidity_order: false,
-            allow_partial_fill: false,
-            cost: CostModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-            fee: FeeModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-        };
-        let bal_dai_order = OrderModel {
-            sell_token: gno,
-            buy_token: bal,
-            sell_amount: 1_000_000_000_000_000_000_000u128.into(),
-            buy_amount: 1u128.into(),
-            is_sell_order: true,
-            allow_partial_fill: false,
-            is_liquidity_order: false,
-            cost: CostModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-            fee: FeeModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-        };
-        let solution = solve(BatchAuctionModel {
-            orders: BTreeMap::from_iter(IntoIter::new([(1, bal_dai_order), (2, dai_gno_order)])),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-
-        println!("{:#?}", solution);
-    }
-    #[tokio::test]
-    #[ignore]
-    async fn solve_two_orders_into_same_direction() {
-        let free: H160 = "4cd0c43b0d53bc318cc5342b77eb6f124e47f526".parse().unwrap();
-        let weth: H160 = "c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".parse().unwrap();
-
-        let free_weth_order = OrderModel {
-            sell_token: free,
-            buy_token: weth,
-            sell_amount: 975_836_594_684_055_780_624_887u128.into(),
-            buy_amount: 1_000_000_000_000_000_000u128.into(),
-            is_sell_order: false,
-            is_liquidity_order: false,
-            allow_partial_fill: false,
-            cost: CostModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-            fee: FeeModel {
-                amount: U256::from(0),
-                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
-            },
-        };
-        let solution = solve(BatchAuctionModel {
-            orders: BTreeMap::from_iter(IntoIter::new([
-                (1, free_weth_order.clone()),
-                (2, free_weth_order),
-            ])),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-
-        println!("{:#?}", solution);
-    }
 }

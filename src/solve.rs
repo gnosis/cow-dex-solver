@@ -37,7 +37,11 @@ pub async fn solve(
         orders, mut tokens, ..
     }: BatchAuctionModel,
 ) -> Result<SettledBatchAuctionModel> {
-    tracing::debug!("    {:?} and the tokens: {:?}", orders, tokens);
+    tracing::info!(
+        "Solving instance with the orders {:?} and the tokens: {:?}",
+        orders,
+        tokens
+    );
 
     let api_key = env::var("ZEROEX_API_KEY").map(Some).unwrap_or(None);
     if orders.is_empty() {
@@ -65,7 +69,7 @@ pub async fn solve(
     // 2nd step: Removing obvious cow volume from splitted traded amounts, by matching opposite volume
     let updated_traded_amounts;
     if contains_cow {
-        tracing::debug!("Found cow and trying to solve it");
+        tracing::info!("Found cow and trying to solve it");
         // if there is a cow volume, we try to remove it
         updated_traded_amounts =
             match get_trade_amounts_without_cow_volumes(&splitted_trade_amounts) {
@@ -87,7 +91,7 @@ pub async fn solve(
             );
         }
     } else {
-        tracing::debug!("Falling back to normal zeroEx solver");
+        tracing::info!("Falling back to normal zeroEx solver");
         let mut order_hashmap: HashMap<(H160, H160), TradeAmount> = HashMap::new();
         for (_, order) in orders.clone().iter() {
             if order_hashmap

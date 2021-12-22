@@ -37,7 +37,11 @@ pub async fn solve(
         orders, mut tokens, ..
     }: BatchAuctionModel,
 ) -> Result<SettledBatchAuctionModel> {
-    tracing::debug!("    {:?} and the tokens: {:?}", orders, tokens);
+    tracing::info!(
+        "Solving instance with the orders {:?} and the tokens: {:?}",
+        orders,
+        tokens
+    );
 
     let api_key = env::var("ZEROEX_API_KEY").map(Some).unwrap_or(None);
     if orders.is_empty() {
@@ -65,14 +69,14 @@ pub async fn solve(
     // 2nd step: Removing obvious cow volume from splitted traded amounts, by matching opposite volume
     let updated_traded_amounts;
     if contains_cow {
-        tracing::debug!("Found cow and trying to solve it");
+        tracing::info!("Found cow and trying to solve it");
         // if there is a cow volume, we try to remove it
         updated_traded_amounts =
             match get_trade_amounts_without_cow_volumes(&splitted_trade_amounts) {
                 Ok(traded_amounts) => traded_amounts,
                 Err(err) => {
                     tracing::debug!(
-                        "Error from zeroEx api for trading left over amounts: {:?}",
+                        "Error from zeroEx api for trade amounts without cows: {:?}",
                         err
                     );
                     return Ok(SettledBatchAuctionModel::default());
@@ -87,7 +91,7 @@ pub async fn solve(
             );
         }
     } else {
-        tracing::debug!("Falling back to normal zeroEx solver");
+        tracing::info!("Falling back to normal zeroEx solver");
         let mut order_hashmap: HashMap<(H160, H160), TradeAmount> = HashMap::new();
         for (_, order) in orders.clone().iter() {
             if order_hashmap
@@ -114,7 +118,17 @@ pub async fn solve(
     }
 
     // 3rd step: Get trades from zeroEx of left-over amounts
-    let mut swap_results = get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await?;
+    let mut swap_results =
+        match get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await {
+            Ok(swap_results) => swap_results,
+            Err(err) => {
+                tracing::debug!(
+                    "Error from zeroEx api for trading left over amounts: {:?}",
+                    err
+                );
+                return Ok(SettledBatchAuctionModel::default());
+            }
+        };
     if !contains_cow {
         matched_orders = update_matched_orders_in_case_of_no_cow(orders, &swap_results);
     }

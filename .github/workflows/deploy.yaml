@@ -7,6 +7,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
+      AUTODEPLOY_TAG: develop
+      AUTODEPLOY_URL: https://dfusion.auto.gnosisdev.com/services/dfusion-v2-cowdexsolver/rollout
       DOCKERHUB_PROJECT: cowdexsolver
       DOCKER_NAME: ${{ secrets.DOCKER_NAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

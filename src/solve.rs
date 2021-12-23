@@ -50,6 +50,12 @@ pub async fn solve(
 
     let mut orders: Vec<(usize, OrderModel)> = orders.into_iter().map(|(i, y)| (i, y)).collect();
     // For simplicity, only solve for up to 20 orders
+    if orders.len() > 4usize {
+        orders = orders
+            .into_iter()
+            .filter(|(_, order)| is_market_order(&tokens, order.clone()).unwrap_or(false))
+            .collect();
+    }
     orders.truncate(20);
 
     // Step1: get splitted trade amounts per token pair for each order via paraswap dex-ag
@@ -227,6 +233,39 @@ pub async fn solve(
     }
     tracing::info!("Found solution: {:?}", solution);
     Ok(solution)
+}
+
+fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -> Result<bool> {
+    // works currently only for sell orders
+    let sell_token_price = tokens
+        .get(&order.sell_token)
+        .ok_or_else(|| anyhow!("sell token price not available"))?
+        .external_price
+        .ok_or_else(|| anyhow!("sell token price not available"))?;
+    let buy_token_price = tokens
+        .get(&order.buy_token)
+        .ok_or_else(|| anyhow!("buy token price not available"))?
+        .external_price
+        .ok_or_else(|| anyhow!("buy token price not available"))?;
+
+    let decimals_sell_token = tokens
+        .get(&order.sell_token)
+        .ok_or_else(|| anyhow!("sell token decimals not available"))?
+        .decimals
+        .ok_or_else(|| anyhow!("sell token decimals not available"))?;
+
+    let decimals_buy_token = tokens
+        .get(&order.buy_token)
+        .ok_or_else(|| anyhow!("buy token decimals not available"))?
+        .decimals
+        .ok_or_else(|| anyhow!("buy token decimals not available"))?;
+    Ok((order.sell_amount.as_u128() as f64)
+        * (sell_token_price)
+        * 10f64.powi(decimals_buy_token as i32)
+        > (order.buy_amount.as_u128() as f64)
+            * buy_token_price
+            * 10f64.powi(decimals_sell_token as i32)
+            * 0.99f64)
 }
 
 async fn get_allowances_for_tokens_involved(
@@ -643,6 +682,106 @@ mod tests {
     use core::array::IntoIter;
     use std::collections::BTreeMap;
     use tracing_test::traced_test;
+
+    #[test]
+    fn check_for_market_order() {
+        let dai: H160 = "4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b".parse().unwrap();
+        let usdc: H160 = "d533a949740bb3306d119cc777fa900ba034cd52".parse().unwrap();
+
+        let dai_usdc_order = OrderModel {
+            sell_token: dai,
+            buy_token: usdc,
+            sell_amount: 1_001_000_000_000_000_000u128.into(),
+            buy_amount: 1_000_000u128.into(),
+            is_sell_order: true,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+        let tokens = BTreeMap::from_iter(IntoIter::new([
+            (
+                dai,
+                TokenInfoModel {
+                    decimals: Some(18u8),
+                    external_price: Some(1.00f64),
+                    ..Default::default()
+                },
+            ),
+            (
+                usdc,
+                TokenInfoModel {
+                    decimals: Some(6u8),
+                    external_price: Some(1.00f64),
+                    ..Default::default()
+                },
+            ),
+        ]));
+        assert!(is_market_order(&tokens, dai_usdc_order.clone()).unwrap());
+        let tokens = BTreeMap::from_iter(IntoIter::new([
+            (
+                dai,
+                TokenInfoModel {
+                    decimals: Some(18u8),
+                    external_price: Some(1.00f64),
+                    ..Default::default()
+                },
+            ),
+            (
+                usdc,
+                TokenInfoModel {
+                    decimals: Some(6u8),
+                    external_price: Some(1.02f64),
+                    ..Default::default()
+                },
+            ),
+        ]));
+        assert!(!is_market_order(&tokens, dai_usdc_order).unwrap());
+
+        let weth: H160 = "4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b".parse().unwrap();
+        let usdc_weth_order = OrderModel {
+            sell_token: usdc,
+            buy_token: weth,
+            sell_amount: 4_002_000_000u128.into(),
+            buy_amount: 1_000_000_000_000_000_000u128.into(),
+            is_sell_order: true,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+        let tokens = BTreeMap::from_iter(IntoIter::new([
+            (
+                weth,
+                TokenInfoModel {
+                    decimals: Some(18u8),
+                    external_price: Some(1.00f64),
+                    ..Default::default()
+                },
+            ),
+            (
+                usdc,
+                TokenInfoModel {
+                    decimals: Some(6u8),
+                    external_price: Some(0.00025f64),
+                    ..Default::default()
+                },
+            ),
+        ]));
+        assert!(is_market_order(&tokens, usdc_weth_order).unwrap());
+    }
 
     #[tokio::test]
     #[traced_test]

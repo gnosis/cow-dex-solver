@@ -293,7 +293,7 @@ async fn get_swaps_for_left_over_amounts(
             let cloned_api_key = api_key.clone();
             async move {
                 let client = reqwest::ClientBuilder::new()
-                    .timeout(Duration::new(1, 0))
+                    .timeout(Duration::new(3, 0))
                     .user_agent("gp-v2-services/2.0.0")
                     .build()
                     .unwrap();
@@ -344,7 +344,7 @@ async fn get_matchable_orders_and_subtrades(
     let mut paraswap_futures = Vec::new();
     for (i, order) in orders.iter() {
         let client = reqwest::ClientBuilder::new()
-            .timeout(Duration::new(1, 0))
+            .timeout(Duration::new(3, 0))
             .user_agent("gp-v2-services/2.0.0")
             .build()
             .unwrap();
@@ -358,9 +358,16 @@ async fn get_matchable_orders_and_subtrades(
             tokens.clone(),
         ));
     }
-    type OrdersAndSubTradesVector = Vec<(Vec<(usize, OrderModel)>, Vec<SubTrade>)>;
-    let awaited_paraswap_futures: Result<OrdersAndSubTradesVector, anyhow::Error> =
-        join_all(paraswap_futures).await.into_iter().collect();
+    type OrdersAndSubTrades = (Vec<(usize, OrderModel)>, Vec<SubTrade>);
+    // In the following, we use the sequential evaluation, as otherwise paraswap will return errors.
+    // let awaited_paraswap_futures: Result<OrdersAndSubTradesVector, anyhow::Error> =
+    //     join_all(paraswap_futures).await.into_iter().collect();
+    let mut awaited_paraswap_futures: Vec<Result<OrdersAndSubTrades>> = Vec::new();
+    for future in paraswap_futures {
+        awaited_paraswap_futures.push(future.await);
+    }
+    let awaited_paraswap_futures: Result<Vec<OrdersAndSubTrades>, anyhow::Error> =
+        awaited_paraswap_futures.into_iter().collect();
     type MatchedOrderBracket = (Vec<Vec<(usize, OrderModel)>>, Vec<Vec<SubTrade>>);
     let (matched_orders, single_trade_results): MatchedOrderBracket;
     if let Ok(paraswap_futures_results) = awaited_paraswap_futures {
@@ -636,6 +643,61 @@ mod tests {
     use core::array::IntoIter;
     use std::collections::BTreeMap;
     use tracing_test::traced_test;
+
+    #[tokio::test]
+    #[traced_test]
+    #[ignore]
+    async fn solve_three_similar_orders() {
+        let dai: H160 = "4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b".parse().unwrap();
+        let gno: H160 = "d533a949740bb3306d119cc777fa900ba034cd52".parse().unwrap();
+
+        let dai_gno_order = OrderModel {
+            sell_token: dai,
+            buy_token: gno,
+            sell_amount: 199181260940948221184u128.into(),
+            buy_amount: 1416179064540059329552u128.into(),
+            is_sell_order: true,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+
+        let solution = solve(BatchAuctionModel {
+            tokens: BTreeMap::from_iter(IntoIter::new([
+                (
+                    dai,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    gno,
+                    TokenInfoModel {
+                        decimals: Some(18u8),
+                        ..Default::default()
+                    },
+                ),
+            ])),
+            orders: BTreeMap::from_iter(IntoIter::new([
+                (1, dai_gno_order.clone()),
+                (2, dai_gno_order.clone()),
+                (3, dai_gno_order),
+            ])),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        println!("{:#?}", solution);
+    }
 
     #[tokio::test]
     #[traced_test]

@@ -38,7 +38,7 @@ pub async fn solve(
     }: BatchAuctionModel,
 ) -> Result<SettledBatchAuctionModel> {
     tracing::info!(
-        "Solving instance with the orders {:?} and the tokens: {:?}",
+        "Before filtering: Solving instance with the orders {:?} and the tokens: {:?}",
         orders,
         tokens
     );
@@ -56,7 +56,13 @@ pub async fn solve(
             .filter(|(_, order)| is_market_order(&tokens, order.clone()).unwrap_or(false))
             .collect();
     }
-    orders.truncate(20);
+    orders.truncate(10);
+
+    tracing::info!(
+        "After filtering: Solving instance with the orders {:?} and the tokens: {:?}",
+        orders,
+        tokens
+    );
 
     // Step1: get splitted trade amounts per token pair for each order via paraswap dex-ag
     let (mut matched_orders, single_trade_results) =
@@ -259,13 +265,22 @@ fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -
         .ok_or_else(|| anyhow!("buy token decimals not available"))?
         .decimals
         .ok_or_else(|| anyhow!("buy token decimals not available"))?;
-    Ok((order.sell_amount.as_u128() as f64)
-        * (sell_token_price)
-        * 10f64.powi(decimals_buy_token as i32)
-        > (order.buy_amount.as_u128() as f64)
-            * buy_token_price
-            * 10f64.powi(decimals_sell_token as i32)
-            * 0.99f64)
+    Ok((order.is_sell_order
+        && (order.sell_amount.as_u128() as f64)
+            * (sell_token_price)
+            * 10f64.powi(decimals_buy_token as i32)
+            > (order.buy_amount.as_u128() as f64)
+                * buy_token_price
+                * 10f64.powi(decimals_sell_token as i32)
+                * 0.999f64)
+        || (!order.is_sell_order
+            && (order.buy_amount.as_u128() as f64)
+                * (buy_token_price)
+                * 10f64.powi(decimals_sell_token as i32)
+                < (order.sell_amount.as_u128() as f64)
+                    * sell_token_price
+                    * 10f64.powi(decimals_buy_token as i32)
+                    * 1.001f64))
 }
 
 async fn get_allowances_for_tokens_involved(
@@ -492,7 +507,7 @@ fn satisfies_limit_price_with_buffer(price_response: &Root, order: &OrderModel) 
         && order.is_sell_order)
         || (price_response.price_route.src_amount.le(&order
             .sell_amount
-            .checked_mul(TEN_THOUSAND.checked_add(U256::one()).unwrap())
+            .checked_mul(TEN_THOUSAND.checked_sub(U256::one()).unwrap())
             .unwrap()
             .checked_div(*TEN_THOUSAND)
             .unwrap())
@@ -688,12 +703,29 @@ mod tests {
         let dai: H160 = "4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b".parse().unwrap();
         let usdc: H160 = "d533a949740bb3306d119cc777fa900ba034cd52".parse().unwrap();
 
-        let dai_usdc_order = OrderModel {
+        let dai_usdc_sell_order = OrderModel {
             sell_token: dai,
             buy_token: usdc,
             sell_amount: 1_001_000_000_000_000_000u128.into(),
             buy_amount: 1_000_000u128.into(),
             is_sell_order: true,
+            is_liquidity_order: false,
+            allow_partial_fill: false,
+            cost: CostModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+            fee: FeeModel {
+                amount: U256::from(0),
+                token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
+            },
+        };
+        let dai_usdc_buy_order = OrderModel {
+            sell_token: dai,
+            buy_token: usdc,
+            sell_amount: 1_001_000_000_000_000_000u128.into(),
+            buy_amount: 1_000_000u128.into(),
+            is_sell_order: false,
             is_liquidity_order: false,
             allow_partial_fill: false,
             cost: CostModel {
@@ -723,7 +755,9 @@ mod tests {
                 },
             ),
         ]));
-        assert!(is_market_order(&tokens, dai_usdc_order.clone()).unwrap());
+        assert!(is_market_order(&tokens, dai_usdc_sell_order.clone()).unwrap());
+        assert!(is_market_order(&tokens, dai_usdc_buy_order.clone()).unwrap());
+
         let tokens = BTreeMap::from_iter(IntoIter::new([
             (
                 dai,
@@ -742,8 +776,8 @@ mod tests {
                 },
             ),
         ]));
-        assert!(!is_market_order(&tokens, dai_usdc_order).unwrap());
-
+        assert!(!is_market_order(&tokens, dai_usdc_sell_order).unwrap());
+        assert!(!is_market_order(&tokens, dai_usdc_buy_order).unwrap());
         let weth: H160 = "4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b".parse().unwrap();
         let usdc_weth_order = OrderModel {
             sell_token: usdc,

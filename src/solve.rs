@@ -105,7 +105,7 @@ pub async fn solve(
     } else {
         tracing::info!("Falling back to normal zeroEx solver");
         let mut order_hashmap: HashMap<(H160, H160), TradeAmount> = HashMap::new();
-        for (_, order) in orders.clone().iter() {
+        for (_, order) in matched_orders.clone().iter() {
             if order_hashmap
                 .get_mut(&(order.sell_token, order.buy_token))
                 .is_some()
@@ -272,7 +272,7 @@ fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -
             > (order.buy_amount.as_u128() as f64)
                 * buy_token_price
                 * 10f64.powi(decimals_sell_token as i32)
-                * 0.999f64)
+                * 0.995f64)
         || (!order.is_sell_order
             && (order.buy_amount.as_u128() as f64)
                 * (buy_token_price)
@@ -280,7 +280,7 @@ fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -
                 < (order.sell_amount.as_u128() as f64)
                     * sell_token_price
                     * 10f64.powi(decimals_buy_token as i32)
-                    * 1.001f64))
+                    * 1.005f64))
 }
 
 async fn get_allowances_for_tokens_involved(

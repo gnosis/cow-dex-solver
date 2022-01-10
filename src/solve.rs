@@ -65,7 +65,7 @@ pub async fn solve(
     );
 
     // Step1: get splitted trade amounts per token pair for each order via paraswap dex-ag
-    let (mut matched_orders, single_trade_results) =
+    let (matched_orders, single_trade_results) =
         get_matchable_orders_and_subtrades(orders.clone(), tokens.clone()).await;
     tracing::debug!("single_trade_results: {:?}", single_trade_results);
     let contains_cow = contain_cow(&single_trade_results);
@@ -79,71 +79,51 @@ pub async fn solve(
     let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
 
     // 2nd step: Removing obvious cow volume from splitted traded amounts, by matching opposite volume
-    let updated_traded_amounts;
-    if contains_cow {
-        tracing::info!("Found cow and trying to solve it");
-        // if there is a cow volume, we try to remove it
-        updated_traded_amounts =
-            match get_trade_amounts_without_cow_volumes(&splitted_trade_amounts) {
-                Ok(traded_amounts) => traded_amounts,
-                Err(err) => {
-                    tracing::debug!(
-                        "Error from zeroEx api for trade amounts without cows: {:?}",
-                        err
-                    );
-                    return Ok(SettledBatchAuctionModel::default());
-                }
-            };
+    let (matched_orders, mut swap_results) = match contains_cow {
+        true => {
+            tracing::info!("Found cow and trying to solve it");
+            // if there is a cow volume, we try to remove it
+            let updated_traded_amounts =
+                match get_trade_amounts_without_cow_volumes(&splitted_trade_amounts) {
+                    Ok(traded_amounts) => traded_amounts,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Error from zeroEx api for trade amounts without cows: {:?}",
+                            err
+                        );
+                        return Ok(SettledBatchAuctionModel::default());
+                    }
+                };
 
-        for (pair, entry_amounts) in &updated_traded_amounts {
-            tracing::debug!(
-                " After cow merge: trade on pair {:?} with values {:?}",
-                pair,
-                entry_amounts,
-            );
-        }
-    } else {
-        tracing::info!("Falling back to normal zeroEx solver");
-        let mut order_hashmap: HashMap<(H160, H160), TradeAmount> = HashMap::new();
-        for (_, order) in matched_orders.clone().iter() {
-            if order_hashmap
-                .get_mut(&(order.sell_token, order.buy_token))
-                .is_some()
-            {
+            for (pair, entry_amounts) in &updated_traded_amounts {
                 tracing::debug!(
-                    "Can not deal with potential cow, but non-found cow on sell and buy tokens of the following order: {:?}",
-                    order
-                );
-                return Ok(SettledBatchAuctionModel::default());
-            } else {
-                order_hashmap.insert(
-                    (order.sell_token, order.buy_token),
-                    TradeAmount {
-                        must_satisfy_limit_price: true,
-                        sell_amount: order.sell_amount,
-                        buy_amount: order.buy_amount,
-                    },
+                    " After cow merge: trade on pair {:?} with values {:?}",
+                    pair,
+                    entry_amounts,
                 );
             }
-        }
-        updated_traded_amounts = order_hashmap;
-    }
 
-    // 3rd step: Get trades from zeroEx of left-over amounts
-    let mut swap_results =
-        match get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await {
-            Ok(swap_results) => swap_results,
-            Err(err) => {
-                tracing::debug!(
-                    "Error from zeroEx api for trading left over amounts: {:?}",
-                    err
-                );
-                return Ok(SettledBatchAuctionModel::default());
-            }
-        };
-    if !contains_cow {
-        matched_orders = update_matched_orders_in_case_of_no_cow(orders, &swap_results);
-    }
+            // 3rd step: Get trades from zeroEx of left-over amounts
+            let swap_results =
+                match get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await {
+                    Ok(swap_results) => swap_results,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Error from zeroEx api for trading left over amounts: {:?}",
+                            err
+                        );
+                        return Ok(SettledBatchAuctionModel::default());
+                    }
+                };
+            (matched_orders, swap_results)
+        }
+        false => {
+            tracing::info!("Falling back to normal zeroEx solver");
+
+            let zero_ex_results = get_swaps_for_orders_from_zeroex(orders, api_key).await?;
+            zero_ex_results.into_iter().unzip()
+        }
+    };
 
     // 4th step: Get all approvals via a batch requests for the different swap
     let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
@@ -241,6 +221,13 @@ pub async fn solve(
     Ok(solution)
 }
 
+fn swap_respects_limit_price(swap: &SwapResponse, order: &OrderModel) -> bool {
+    match order.is_sell_order {
+        false => swap.sell_amount <= order.sell_amount,
+        true => swap.buy_amount >= order.buy_amount,
+    }
+}
+
 fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -> Result<bool> {
     // works currently only for sell orders
     let sell_token_price = tokens
@@ -320,21 +307,60 @@ async fn get_allowances_for_tokens_involved(
     allowances
 }
 
-fn update_matched_orders_in_case_of_no_cow(
+async fn get_swaps_for_orders_from_zeroex(
     orders: Vec<(usize, OrderModel)>,
-    swap_results: &[(SwapQuery, SwapResponse)],
-) -> Vec<(usize, OrderModel)> {
-    let mut matched_orders = Vec::new();
-    for (i, order) in orders.iter() {
-        if swap_results.iter().any(|(query, swap)| {
-            swap.sell_amount == order.sell_amount
-                && order.buy_token == query.buy_token
-                && order.sell_token.eq(&order.sell_token)
-        }) {
-            matched_orders.push((*i, order.clone()));
+    api_key: Option<String>,
+) -> Result<Vec<((usize, OrderModel), (SwapQuery, SwapResponse))>> {
+    let zeroex_futures = orders.into_iter().map(|(index, order)| {
+        let cloned_api_key = api_key.clone();
+        async move {
+            let client = reqwest::ClientBuilder::new()
+                .timeout(Duration::new(3, 0))
+                .user_agent("gp-v2-services/2.0.0")
+                .build()
+                .unwrap();
+            let zeroex_solver = ZeroExSolver::new(1u64, cloned_api_key, client.clone()).unwrap();
+
+            let query = match order.is_sell_order {
+                true => SwapQuery {
+                    sell_token: order.sell_token,
+                    buy_token: order.buy_token,
+                    sell_amount: Some(order.sell_amount),
+                    buy_amount: None,
+                    slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+                    skip_validation: Some(true),
+                },
+                false => SwapQuery {
+                    sell_token: order.sell_token,
+                    buy_token: order.buy_token,
+                    sell_amount: None,
+                    buy_amount: Some(order.buy_amount),
+                    slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+                    skip_validation: Some(true),
+                },
+            };
+            (
+                index,
+                order,
+                query.clone(),
+                zeroex_solver.client.get_swap(query).await,
+            )
         }
-    }
-    matched_orders
+    });
+    let swap_results = join_all(zeroex_futures).await;
+    swap_results
+        .iter()
+        .map(|(index, order, query, swap)| match swap {
+            Ok(swap) => {
+                if !swap_respects_limit_price(swap, order) {
+                    return Err(anyhow!("swap price not good enough"));
+                }
+                Ok(((*index, order.clone()), (query.clone(), swap.clone())))
+            }
+            Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
+        })
+        .filter(|x| x.is_ok() || format!("{:?}", x).contains("error from zeroex"))
+        .collect()
 }
 
 async fn get_swaps_for_left_over_amounts(

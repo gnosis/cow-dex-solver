@@ -311,42 +311,46 @@ async fn get_swaps_for_orders_from_zeroex(
     orders: Vec<(usize, OrderModel)>,
     api_key: Option<String>,
 ) -> Result<Vec<((usize, OrderModel), (SwapQuery, SwapResponse))>> {
-    let zeroex_futures = orders.into_iter().map(|(index, order)| {
-        let cloned_api_key = api_key.clone();
-        async move {
-            let client = reqwest::ClientBuilder::new()
-                .timeout(Duration::new(3, 0))
-                .user_agent("gp-v2-services/2.0.0")
-                .build()
-                .unwrap();
-            let zeroex_solver = ZeroExSolver::new(1u64, cloned_api_key, client.clone()).unwrap();
+    let zeroex_futures = orders
+        .into_iter()
+        .filter(|(_, x)| !x.is_liquidity_order)
+        .map(|(index, order)| {
+            let cloned_api_key = api_key.clone();
+            async move {
+                let client = reqwest::ClientBuilder::new()
+                    .timeout(Duration::new(5, 0))
+                    .user_agent("gp-v2-services/2.0.0")
+                    .build()
+                    .unwrap();
+                let zeroex_solver =
+                    ZeroExSolver::new(1u64, cloned_api_key, client.clone()).unwrap();
 
-            let query = match order.is_sell_order {
-                true => SwapQuery {
-                    sell_token: order.sell_token,
-                    buy_token: order.buy_token,
-                    sell_amount: Some(order.sell_amount),
-                    buy_amount: None,
-                    slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
-                    skip_validation: Some(true),
-                },
-                false => SwapQuery {
-                    sell_token: order.sell_token,
-                    buy_token: order.buy_token,
-                    sell_amount: None,
-                    buy_amount: Some(order.buy_amount),
-                    slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
-                    skip_validation: Some(true),
-                },
-            };
-            (
-                index,
-                order,
-                query.clone(),
-                zeroex_solver.client.get_swap(query).await,
-            )
-        }
-    });
+                let query = match order.is_sell_order {
+                    true => SwapQuery {
+                        sell_token: order.sell_token,
+                        buy_token: order.buy_token,
+                        sell_amount: Some(order.sell_amount),
+                        buy_amount: None,
+                        slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+                        skip_validation: Some(true),
+                    },
+                    false => SwapQuery {
+                        sell_token: order.sell_token,
+                        buy_token: order.buy_token,
+                        sell_amount: None,
+                        buy_amount: Some(order.buy_amount),
+                        slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+                        skip_validation: Some(true),
+                    },
+                };
+                (
+                    index,
+                    order,
+                    query.clone(),
+                    zeroex_solver.client.get_swap(query).await,
+                )
+            }
+        });
     let swap_results = join_all(zeroex_futures).await;
     swap_results
         .iter()
@@ -359,7 +363,11 @@ async fn get_swaps_for_orders_from_zeroex(
             }
             Err(err) => Err(anyhow!("error from zeroex:{:?}", err)),
         })
-        .filter(|x| x.is_ok() || format!("{:?}", x).contains("error from zeroex"))
+        .filter(|x| {
+            x.is_ok()
+                || (format!("{:?}", x).contains("error from zeroex")
+                    && !format!("{:?}", x).contains("TimedOut"))
+        })
         .collect()
 }
 

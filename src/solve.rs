@@ -120,7 +120,13 @@ pub async fn solve(
         false => {
             tracing::info!("Falling back to normal zeroEx solver");
 
-            let zero_ex_results = get_swaps_for_orders_from_zeroex(orders, api_key).await?;
+            let zero_ex_results = match get_swaps_for_orders_from_zeroex(orders, api_key).await {
+                Ok(zero_ex_results) => zero_ex_results,
+                Err(err) => {
+                    tracing::debug!("Error while calling zeroEx api in fallback mode: {:?}", err);
+                    return Ok(SettledBatchAuctionModel::default());
+                }
+            };
             zero_ex_results.into_iter().unzip()
         }
     };

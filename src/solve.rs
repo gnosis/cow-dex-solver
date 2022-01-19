@@ -49,7 +49,7 @@ pub async fn solve(
     }
 
     let mut orders: Vec<(usize, OrderModel)> = orders.into_iter().map(|(i, y)| (i, y)).collect();
-    // For simplicity, only solve for up to 20 orders
+    // For simplicity, only solve for up to 10 orders
     if orders.len() > 4usize {
         orders = orders
             .into_iter()
@@ -436,12 +436,13 @@ async fn get_matchable_orders_and_subtrades(
     tokens: BTreeMap<H160, TokenInfoModel>,
 ) -> (Vec<(usize, OrderModel)>, Vec<SubTrade>) {
     let mut paraswap_futures = Vec::new();
+    let client = reqwest::ClientBuilder::new()
+        .timeout(Duration::new(3, 0))
+        .user_agent("gp-v2-services/2.0.0")
+        .build()
+        .unwrap();
+
     for (i, order) in orders.iter() {
-        let client = reqwest::ClientBuilder::new()
-            .timeout(Duration::new(3, 0))
-            .user_agent("gp-v2-services/2.0.0")
-            .build()
-            .unwrap();
         let paraswap_solver =
             ParaswapSolver::new(vec![String::from("ParaSwapPool4")], client.clone());
 

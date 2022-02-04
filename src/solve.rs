@@ -643,6 +643,7 @@ fn contain_cow(splitted_trade_amounts: &[SubTrade]) -> bool {
             return true;
         }
         pairs.insert(pair, true);
+        // reverse is also added since two trades doing the same is also a cow
         pairs.insert(reverse_pair, true);
     }
     false

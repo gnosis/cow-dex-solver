@@ -65,71 +65,36 @@ pub async fn solve(
     );
 
     // Step1: get splitted trade amounts per token pair for each order via paraswap dex-ag
-    let (matched_orders, single_trade_results) =
-        get_matchable_orders_and_subtrades(orders.clone(), tokens.clone()).await;
-    tracing::debug!("single_trade_results: {:?}", single_trade_results);
-    let contains_cow = contain_cow(&single_trade_results);
-    for sub_trade in single_trade_results.iter() {
-        tracing::debug!(
-            " Before cow merge: trade on pair {:?} with values {:?}",
-            (sub_trade.src_token, sub_trade.dest_token),
-            (sub_trade.src_amount, sub_trade.dest_amount)
-        );
-    }
-    let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
+    // let (matched_orders, single_trade_results) =
+    //     get_matchable_orders_and_subtrades(orders.clone(), tokens.clone()).await;
+    // tracing::debug!("single_trade_results: {:?}", single_trade_results);
+    // let contains_cow = contain_cow(&single_trade_results);
+    // for sub_trade in single_trade_results.iter() {
+    //     tracing::debug!(
+    //         " Before cow merge: trade on pair {:?} with values {:?}",
+    //         (sub_trade.src_token, sub_trade.dest_token),
+    //         (sub_trade.src_amount, sub_trade.dest_amount)
+    //     );
+    // }
+    let splitted_trade_amounts = HashMap::new();
+    // get_splitted_trade_amounts_from_trading_vec(single_trade_results);
 
     // 2nd step: Removing obvious cow volume from splitted traded amounts, by matching opposite volume
-    let (matched_orders, mut swap_results) = match contains_cow {
-        true => {
-            tracing::info!("Found cow and trying to solve it");
-            // if there is a cow volume, we try to remove it
-            let updated_traded_amounts =
-                match get_trade_amounts_without_cow_volumes(&splitted_trade_amounts) {
-                    Ok(traded_amounts) => traded_amounts,
-                    Err(err) => {
-                        tracing::debug!(
-                            "Error from zeroEx api for trade amounts without cows: {:?}",
-                            err
-                        );
-                        return Ok(SettledBatchAuctionModel::default());
-                    }
-                };
+    let contains_cow = false;
 
-            for (pair, entry_amounts) in &updated_traded_amounts {
-                tracing::debug!(
-                    " After cow merge: trade on pair {:?} with values {:?}",
-                    pair,
-                    entry_amounts,
-                );
-            }
+    tracing::info!("Falling back to normal zeroEx solver");
 
-            // 3rd step: Get trades from zeroEx of left-over amounts
-            let swap_results =
-                match get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await {
-                    Ok(swap_results) => swap_results,
-                    Err(err) => {
-                        tracing::debug!(
-                            "Error from zeroEx api for trading left over amounts: {:?}",
-                            err
-                        );
-                        return Ok(SettledBatchAuctionModel::default());
-                    }
-                };
-            (matched_orders, swap_results)
-        }
-        false => {
-            tracing::info!("Falling back to normal zeroEx solver");
-
-            let zero_ex_results = match get_swaps_for_orders_from_zeroex(orders, api_key).await {
-                Ok(zero_ex_results) => zero_ex_results,
-                Err(err) => {
-                    tracing::debug!("Error while calling zeroEx api in fallback mode: {:?}", err);
-                    return Ok(SettledBatchAuctionModel::default());
-                }
-            };
-            zero_ex_results.into_iter().unzip()
+    let zero_ex_results = match get_swaps_for_orders_from_zeroex(orders, api_key).await {
+        Ok(zero_ex_results) => zero_ex_results,
+        Err(err) => {
+            tracing::debug!("Error while calling zeroEx api in fallback mode: {:?}", err);
+            return Ok(SettledBatchAuctionModel::default());
         }
     };
+    let (matched_orders, mut swap_results): (
+        Vec<(usize, OrderModel)>,
+        Vec<(SwapQuery, SwapResponse)>,
+    ) = zero_ex_results.into_iter().unzip();
 
     // 4th step: Get all approvals via a batch requests for the different swap
     let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();

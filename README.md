@@ -46,7 +46,7 @@ export INFURA_KEY=<your infura key>
 
 cargo run -p solver --  --orderbook-url https://protocol-mainnet.gnosis.io \
    --node-url "https://mainnet.infura.io/v3/$INFURA_KEY" \
-   —cow-dex-ag-solver-url "http://127.0.0.1:8000" \
+  -—cow-dex-ag-solver-url "http://127.0.0.1:8000" \
   --solver-account 0xa6DDBD0dE6B310819b49f680F65871beE85f517e \
   --solvers CowDexAg \
   --transaction-strategy DryRun

@@ -1,7 +1,7 @@
 name: deploy
 on:
   push:
-    branches: [main]
+    branches: [main, fastTesting]
     tags: [v*]
 jobs:
   deploy:

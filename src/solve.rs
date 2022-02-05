@@ -76,12 +76,14 @@ pub async fn solve(
             (sub_trade.src_amount, sub_trade.dest_amount)
         );
     }
-    let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(single_trade_results);
 
     // 2nd step: Removing obvious cow volume from splitted traded amounts, by matching opposite volume
-    let (matched_orders, mut swap_results) = match contains_cow {
+    let ((matched_orders, mut swap_results), splitted_trade_amounts) = match contains_cow {
         true => {
             tracing::info!("Found cow and trying to solve it");
+
+            let splitted_trade_amounts =
+                get_splitted_trade_amounts_from_trading_vec(single_trade_results);
             // if there is a cow volume, we try to remove it
             let updated_traded_amounts =
                 match get_trade_amounts_without_cow_volumes(&splitted_trade_amounts) {
@@ -115,7 +117,7 @@ pub async fn solve(
                         return Ok(SettledBatchAuctionModel::default());
                     }
                 };
-            (matched_orders, swap_results)
+            ((matched_orders, swap_results), splitted_trade_amounts)
         }
         false => {
             tracing::info!("Falling back to normal zeroEx solver");
@@ -127,7 +129,7 @@ pub async fn solve(
                     return Ok(SettledBatchAuctionModel::default());
                 }
             };
-            zero_ex_results.into_iter().unzip()
+            (zero_ex_results.into_iter().unzip(), HashMap::new())
         }
     };
 

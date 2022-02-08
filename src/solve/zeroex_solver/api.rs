@@ -163,7 +163,7 @@ impl ZeroExApi for DefaultZeroExApi {
         let query_str = format!("{:?}", &query.clone().into_url(&self.base_url));
         let mut request = self
             .client
-            .get(query.into_url(&self.base_url))
+            .get(query.clone().into_url(&self.base_url))
             .timeout(Duration::new(3, 0));
         if let Some(key) = &self.api_key {
             request = request.header("0x-api-key", key);
@@ -175,6 +175,11 @@ impl ZeroExApi for DefaultZeroExApi {
             .text()
             .await
             .map_err(ZeroExResponseError::TextFetch)?;
+        tracing::debug!(
+            "The call of the 0x-query {:?} resulted in the following response {:}",
+            query,
+            response_text
+        );
         parse_zeroex_response_text(&response_text, &query_str)
     }
 }

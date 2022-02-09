@@ -251,10 +251,10 @@ fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -
 
     Ok((order.is_sell_order
         && (order.sell_amount.as_u128() as f64) * (sell_token_price)
-            > (order.buy_amount.as_u128() as f64) * buy_token_price * 0.995f64)
+            > (order.buy_amount.as_u128() as f64) * buy_token_price * 0.98f64)
         || (!order.is_sell_order
             && (order.buy_amount.as_u128() as f64) * (buy_token_price)
-                < (order.sell_amount.as_u128() as f64) * sell_token_price * 1.005f64))
+                < (order.sell_amount.as_u128() as f64) * sell_token_price * 1.02f64))
 }
 
 async fn get_allowances_for_tokens_involved(
@@ -836,7 +836,7 @@ mod tests {
                 usdc,
                 TokenInfoModel {
                     decimals: Some(6u8),
-                    external_price: Some(1020000000000.0f64),
+                    external_price: Some(1030000000000.0f64),
                     ..Default::default()
                 },
             ),

@@ -418,7 +418,7 @@ async fn get_matchable_orders_and_subtrades(
 ) -> (Vec<(usize, OrderModel)>, Vec<SubTrade>) {
     let mut paraswap_futures = Vec::new();
     let client = reqwest::ClientBuilder::new()
-        .timeout(Duration::new(3, 0))
+        .timeout(Duration::new(5, 0))
         .user_agent("gp-v2-services/2.0.0")
         .build()
         .unwrap();
@@ -544,8 +544,8 @@ fn get_splitted_trade_amounts_from_trading_vec(
         splitted_trade_amounts
             .entry((sub_trade.src_token, sub_trade.dest_token))
             .and_modify(|(in_amounts, out_amounts)| {
-                in_amounts.checked_add(sub_trade.src_amount).unwrap();
-                out_amounts.checked_add(sub_trade.dest_amount).unwrap();
+                *in_amounts = in_amounts.checked_add(sub_trade.src_amount).unwrap();
+                *out_amounts = out_amounts.checked_add(sub_trade.dest_amount).unwrap();
             })
             .or_insert((sub_trade.src_amount, sub_trade.dest_amount));
     }
@@ -720,6 +720,27 @@ mod tests {
     use core::array::IntoIter;
     use std::collections::BTreeMap;
     use tracing_test::traced_test;
+
+    #[test]
+    fn get_splitted_trade_amounts_from_trading_vec_adds_amounts() {
+        let sub_trade_1 = SubTrade {
+            src_token: "99d8a9c45b2eca8864373a26d1459e3dff1e17f3".parse().unwrap(),
+            dest_token: "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".parse().unwrap(),
+            src_amount: U256::from("1"),
+            dest_amount: U256::from("1"),
+        };
+        let result =
+            get_splitted_trade_amounts_from_trading_vec(vec![sub_trade_1.clone(), sub_trade_1]);
+        let mut expected_result: HashMap<(H160, H160), (U256, U256)> = HashMap::new();
+        expected_result.insert(
+            (
+                "99d8a9c45b2eca8864373a26d1459e3dff1e17f3".parse().unwrap(),
+                "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".parse().unwrap(),
+            ),
+            (U256::from("2"), U256::from("2")),
+        );
+        assert_eq!(result, expected_result);
+    }
 
     #[test]
     fn check_for_market_order_with_different_decimal() {

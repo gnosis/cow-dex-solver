@@ -418,7 +418,7 @@ async fn get_matchable_orders_and_subtrades(
 ) -> (Vec<(usize, OrderModel)>, Vec<SubTrade>) {
     let mut paraswap_futures = Vec::new();
     let client = reqwest::ClientBuilder::new()
-        .timeout(Duration::new(3, 0))
+        .timeout(Duration::new(5, 0))
         .user_agent("gp-v2-services/2.0.0")
         .build()
         .unwrap();

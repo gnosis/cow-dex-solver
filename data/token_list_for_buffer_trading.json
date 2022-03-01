@@ -373,6 +373,12 @@
             "name": "VISOR",
             "decimals": 18,
             "address": "0xf938424f7210f31df2aee3011291b658f872e91e"
+        },
+        {
+            "symbol": "COW",
+            "name": "CoW Protocol Token",
+            "decimals": 18,
+            "address": "0xDEf1CA1fb7FBcDC777520aa7f396b4E015F497aB"
         }
     ]
 }

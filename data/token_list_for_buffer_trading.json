@@ -1,6 +1,6 @@
 {
     "name": "Market Makable Tokens for Cowswap",
-    "timestamp": "2022-02-01T14:54:18+00:00",
+    "timestamp": "2022-03-01T14:54:18+00:00",
     "version": {
         "major": 0,
         "minor": 1,
@@ -17,28 +17,28 @@
             "name": "USD Coin",
             "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
             "decimals": 6,
-            "logoURI": "https: //tokens.1inch.io/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.png"
+            "logoURI": "https://tokens.1inch.io/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.png"
         },
         {
             "symbol": "WETH",
             "name": "Wrapped Ether",
             "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
             "decimals": 18,
-            "logoURI": "https: //tokens.1inch.io/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2.png"
+            "logoURI": "https://tokens.1inch.io/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2.png"
         },
         {
             "symbol": "USDT",
             "name": "Tether USD",
             "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
             "decimals": 6,
-            "logoURI": "https: //tokens.1inch.io/0xdac17f958d2ee523a2206206994597c13d831ec7.png"
+            "logoURI": "https://tokens.1inch.io/0xdac17f958d2ee523a2206206994597c13d831ec7.png"
         },
         {
             "symbol": "DAI",
             "name": "Dai Stablecoin",
             "decimals": 18,
             "address": "0x6b175474e89094c44da98b954eedeac495271d0f",
-            "logoURI": "https: //tokens.1inch.io/0x6b175474e89094c44da98b954eedeac495271d0f.png",
+            "logoURI": "https://tokens.1inch.io/0x6b175474e89094c44da98b954eedeac495271d0f.png",
             "eip2612": true
         },
         {
@@ -46,14 +46,14 @@
             "name": "Gnosis",
             "address": "0x6810e776880c02933d47db1b9fc05908e5386b96",
             "decimals": 18,
-            "logoURI": "https: //tokens.1inch.io/0x6810e776880c02933d47db1b9fc05908e5386b96.png"
+            "logoURI": "https://tokens.1inch.io/0x6810e776880c02933d47db1b9fc05908e5386b96.png"
         },
         {
             "symbol": "OHM",
             "name": "Olympus",
             "decimals": 9,
             "address": "0x383518188c0c6d7730d91b2c03a03c837814a899",
-            "logoURI": "https: //tokens.1inch.io/0x383518188c0c6d7730d91b2c03a03c837814a899.png",
+            "logoURI": "https://tokens.1inch.io/0x383518188c0c6d7730d91b2c03a03c837814a899.png",
             "eip2612": true
         },
         {
@@ -61,42 +61,42 @@
             "name": "Wrapped BTC",
             "address": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
             "decimals": 8,
-            "logoURI": "https: //tokens.1inch.io/0x2260fac5e5542a773aa44fbcfedf7c193bc2c599.png"
+            "logoURI": "https://tokens.1inch.io/0x2260fac5e5542a773aa44fbcfedf7c193bc2c599.png"
         },
         {
             "symbol": "STRONG",
             "name": "Strong",
             "address": "0x990f341946a3fdb507ae7e52d17851b87168017c",
             "decimals": 18,
-            "logoURI": "https: //tokens.1inch.io/0x990f341946a3fdb507ae7e52d17851b87168017c.png"
+            "logoURI": "https://tokens.1inch.io/0x990f341946a3fdb507ae7e52d17851b87168017c.png"
         },
         {
             "symbol": "FRAX",
             "name": "Frax",
             "decimals": 18,
             "address": "0x853d955acef822db058eb8505911ed77f175b99e",
-            "logoURI": "https: //tokens.1inch.io/0x853d955acef822db058eb8505911ed77f175b99e.png"
+            "logoURI": "https://tokens.1inch.io/0x853d955acef822db058eb8505911ed77f175b99e.png"
         },
         {
             "symbol": "CRV",
             "name": "Curve DAO Token",
             "decimals": 18,
             "address": "0xd533a949740bb3306d119cc777fa900ba034cd52",
-            "logoURI": "https: //tokens.1inch.io/0xd533a949740bb3306d119cc777fa900ba034cd52.png"
+            "logoURI": "https://tokens.1inch.io/0xd533a949740bb3306d119cc777fa900ba034cd52.png"
         },
         {
             "symbol": "CVX",
             "name": "Convex Token",
             "decimals": 18,
             "address": "0x4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b",
-            "logoURI": "https: //tokens.1inch.io/0x4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b.png"
+            "logoURI": "https://tokens.1inch.io/0x4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b.png"
         },
         {
             "symbol": "UNI",
             "name": "Uniswap",
             "decimals": 18,
             "address": "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
-            "logoURI": "https: //tokens.1inch.io/0x1f9840a85d5af5bf1d1762f925bdaddc4201f984.png",
+            "logoURI": "https://tokens.1inch.io/0x1f9840a85d5af5bf1d1762f925bdaddc4201f984.png",
             "eip2612": true
         },
         {
@@ -104,14 +104,14 @@
             "name": "Frax Share",
             "decimals": 18,
             "address": "0x3432b6a60d23ca0dfca7761b7ab56459d9c964d0",
-            "logoURI": "https: //tokens.1inch.io/0x3432b6a60d23ca0dfca7761b7ab56459d9c964d0.png"
+            "logoURI": "https://tokens.1inch.io/0x3432b6a60d23ca0dfca7761b7ab56459d9c964d0.png"
         },
         {
             "symbol": "AAVE",
             "name": "Aave Token",
             "decimals": 18,
             "address": "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9",
-            "logoURI": "https: //tokens.1inch.io/0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9.png",
+            "logoURI": "https://tokens.1inch.io/0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9.png",
             "eip2612": true
         },
         {
@@ -119,7 +119,7 @@
             "name": "LUSD Stablecoin",
             "decimals": 18,
             "address": "0x5f98805a4e8be255a32880fdec7f6728c6568ba0",
-            "logoURI": "https: //tokens.1inch.io/0x5f98805a4e8be255a32880fdec7f6728c6568ba0.png",
+            "logoURI": "https://tokens.1inch.io/0x5f98805a4e8be255a32880fdec7f6728c6568ba0.png",
             "eip2612": true
         },
         {
@@ -127,14 +127,14 @@
             "name": "Magic Internet Money",
             "decimals": 18,
             "address": "0x99d8a9c45b2eca8864373a26d1459e3dff1e17f3",
-            "logoURI": "https: //tokens.1inch.io/0x99d8a9c45b2eca8864373a26d1459e3dff1e17f3.png"
+            "logoURI": "https://tokens.1inch.io/0x99d8a9c45b2eca8864373a26d1459e3dff1e17f3.png"
         },
         {
             "symbol": "1INCH",
             "name": "1INCH Token",
             "decimals": 18,
             "address": "0x111111111117dc0aa78b770fa6a738034120c302",
-            "logoURI": "https: //tokens.1inch.io/0x111111111117dc0aa78b770fa6a738034120c302.png",
+            "logoURI": "https://tokens.1inch.io/0x111111111117dc0aa78b770fa6a738034120c302.png",
             "eip2612": true
         },
         {
@@ -142,21 +142,21 @@
             "name": "Spell Token",
             "decimals": 18,
             "address": "0x090185f2135308bad17527004364ebcc2d37e5f6",
-            "logoURI": "https: //tokens.1inch.io/0x090185f2135308bad17527004364ebcc2d37e5f6.png"
+            "logoURI": "https://tokens.1inch.io/0x090185f2135308bad17527004364ebcc2d37e5f6.png"
         },
         {
             "symbol": "LDO",
             "name": "Lido DAO Token",
             "decimals": 18,
             "address": "0x5a98fcbea516cf06857215779fd812ca3bef1b32",
-            "logoURI": "https: //tokens.1inch.io/0x5a98fcbea516cf06857215779fd812ca3bef1b32.png"
+            "logoURI": "https://tokens.1inch.io/0x5a98fcbea516cf06857215779fd812ca3bef1b32.png"
         },
         {
             "symbol": "MIST",
             "name": "Alchemist",
             "decimals": 18,
             "address": "0x88acdd2a6425c3faae4bc9650fd7e27e0bebb7ab",
-            "logoURI": "https: //tokens.1inch.io/0x88acdd2a6425c3faae4bc9650fd7e27e0bebb7ab.png",
+            "logoURI": "https://tokens.1inch.io/0x88acdd2a6425c3faae4bc9650fd7e27e0bebb7ab.png",
             "eip2612": true
         },
         {
@@ -164,14 +164,14 @@
             "name": "Matic Token",
             "decimals": 18,
             "address": "0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0",
-            "logoURI": "https: //tokens.1inch.io/0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0.png"
+            "logoURI": "https://tokens.1inch.io/0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0.png"
         },
         {
             "symbol": "wNXM",
             "name": "Wrapped NXM",
             "decimals": 18,
             "address": "0x0d438f3b5175bebc262bf23753c1e53d03432bde",
-            "logoURI": "https: //tokens.1inch.io/0x0d438f3b5175bebc262bf23753c1e53d03432bde.png",
+            "logoURI": "https://tokens.1inch.io/0x0d438f3b5175bebc262bf23753c1e53d03432bde.png",
             "eip2612": true
         },
         {
@@ -179,28 +179,28 @@
             "name": "Chain Link",
             "address": "0x514910771af9ca656af840dff83e8264ecf986ca",
             "decimals": 18,
-            "logoURI": "https: //tokens.1inch.io/0x514910771af9ca656af840dff83e8264ecf986ca.png"
+            "logoURI": "https://tokens.1inch.io/0x514910771af9ca656af840dff83e8264ecf986ca.png"
         },
         {
             "symbol": "FTM",
             "name": "Fantom Token",
             "decimals": 18,
             "address": "0x4e15361fd6b4bb609fa63c81a2be19d873717870",
-            "logoURI": "https: //tokens.1inch.io/0x4e15361fd6b4bb609fa63c81a2be19d873717870.png"
+            "logoURI": "https://tokens.1inch.io/0x4e15361fd6b4bb609fa63c81a2be19d873717870.png"
         },
         {
             "symbol": "SUSHI",
             "name": "SushiToken",
             "decimals": 18,
             "address": "0x6b3595068778dd592e39a122f4f5a5cf09c90fe2",
-            "logoURI": "https: //tokens.1inch.io/0x6b3595068778dd592e39a122f4f5a5cf09c90fe2.png"
+            "logoURI": "https://tokens.1inch.io/0x6b3595068778dd592e39a122f4f5a5cf09c90fe2.png"
         },
         {
             "symbol": "ICE",
             "name": "IceToken",
             "decimals": 18,
             "address": "0xf16e81dce15b08f326220742020379b855b87df9",
-            "logoURI": "https: //tokens.1inch.io/0xf16e81dce15b08f326220742020379b855b87df9.png",
+            "logoURI": "https://tokens.1inch.io/0xf16e81dce15b08f326220742020379b855b87df9.png",
             "eip2612": true
         },
         {
@@ -208,7 +208,7 @@
             "name": "Balancer",
             "decimals": 18,
             "address": "0xba100000625a3754423978a60c9317c58a424e3d",
-            "logoURI": "https: //tokens.1inch.io/0xba100000625a3754423978a60c9317c58a424e3d.png",
+            "logoURI": "https://tokens.1inch.io/0xba100000625a3754423978a60c9317c58a424e3d.png",
             "eip2612": true
         },
         {
@@ -216,21 +216,21 @@
             "name": "yearn.finance",
             "decimals": 18,
             "address": "0x0bc529c00c6401aef6d220be8c6ea1667f6ad93e",
-            "logoURI": "https: //tokens.1inch.io/0x0bc529c00c6401aef6d220be8c6ea1667f6ad93e.png"
+            "logoURI": "https://tokens.1inch.io/0x0bc529c00c6401aef6d220be8c6ea1667f6ad93e.png"
         },
         {
             "symbol": "HEX",
             "name": "HEX",
             "address": "0x2b591e99afe9f32eaa6214f7b7629768c40eeb39",
             "decimals": 8,
-            "logoURI": "https: //tokens.1inch.io/0x2b591e99afe9f32eaa6214f7b7629768c40eeb39.png"
+            "logoURI": "https://tokens.1inch.io/0x2b591e99afe9f32eaa6214f7b7629768c40eeb39.png"
         },
         {
             "symbol": "TRIBE",
             "name": "Tribe",
             "decimals": 18,
             "address": "0xc7283b66eb1eb5fb86327f08e1b5816b0720212b",
-            "logoURI": "https: //tokens.1inch.io/0xc7283b66eb1eb5fb86327f08e1b5816b0720212b.png",
+            "logoURI": "https://tokens.1inch.io/0xc7283b66eb1eb5fb86327f08e1b5816b0720212b.png",
             "eip2612": true
         },
         {
@@ -238,14 +238,14 @@
             "name": "SAND",
             "decimals": 18,
             "address": "0x3845badade8e6dff049820680d1f14bd3903a5d0",
-            "logoURI": "https: //tokens.1inch.io/0x3845badade8e6dff049820680d1f14bd3903a5d0.png"
+            "logoURI": "https://tokens.1inch.io/0x3845badade8e6dff049820680d1f14bd3903a5d0.png"
         },
         {
             "symbol": "EDEN",
             "name": "Eden",
             "decimals": 18,
             "address": "0x1559fa1b8f28238fd5d76d9f434ad86fd20d1559",
-            "logoURI": "https: //tokens.1inch.io/0x1559fa1b8f28238fd5d76d9f434ad86fd20d1559.png",
+            "logoURI": "https://tokens.1inch.io/0x1559fa1b8f28238fd5d76d9f434ad86fd20d1559.png",
             "eip2612": true
         },
         {
@@ -253,7 +253,7 @@
             "name": "Ampleforth",
             "address": "0xd46ba6d942050d489dbd938a2c909a5d5039a161",
             "decimals": 9,
-            "logoURI": "https: //tokens.1inch.io/0xd46ba6d942050d489dbd938a2c909a5d5039a161.png",
+            "logoURI": "https://tokens.1inch.io/0xd46ba6d942050d489dbd938a2c909a5d5039a161.png",
             "eip2612": true
         },
         {
@@ -261,7 +261,7 @@
             "name": "STAKE",
             "address": "0x0ae055097c6d159879521c384f1d2123d1f195e6",
             "decimals": 18,
-            "logoURI": "https: //tokens.1inch.io/0x0ae055097c6d159879521c384f1d2123d1f195e6.png",
+            "logoURI": "https://tokens.1inch.io/0x0ae055097c6d159879521c384f1d2123d1f195e6.png",
             "eip2612": true
         },
         {
@@ -269,14 +269,14 @@
             "name": "SHIBA INU",
             "decimals": 18,
             "address": "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce",
-            "logoURI": "https: //tokens.1inch.io/0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce.png"
+            "logoURI": "https://tokens.1inch.io/0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce.png"
         },
         {
             "symbol": "LQTY",
             "name": "LQTY",
             "decimals": 18,
             "address": "0x6dea81c8171d0ba574754ef6f8b412f2ed88c54d",
-            "logoURI": "https: //tokens.1inch.io/0x6dea81c8171d0ba574754ef6f8b412f2ed88c54d.png",
+            "logoURI": "https://tokens.1inch.io/0x6dea81c8171d0ba574754ef6f8b412f2ed88c54d.png",
             "eip2612": true
         },
         {
@@ -284,7 +284,7 @@
             "name": "Fei USD",
             "decimals": 18,
             "address": "0x956f47f50a910163d8bf957cf5846d573e7f87ca",
-            "logoURI": "https: //tokens.1inch.io/0x956f47f50a910163d8bf957cf5846d573e7f87ca.png",
+            "logoURI": "https://tokens.1inch.io/0x956f47f50a910163d8bf957cf5846d573e7f87ca.png",
             "eip2612": true
         },
         {
@@ -292,42 +292,42 @@
             "name": "Keep3rV1",
             "decimals": 18,
             "address": "0x1ceb5cb57c4d4e2b2433641b95dd330a33185a44",
-            "logoURI": "https: //tokens.1inch.io/0x1ceb5cb57c4d4e2b2433641b95dd330a33185a44.png"
+            "logoURI": "https://tokens.1inch.io/0x1ceb5cb57c4d4e2b2433641b95dd330a33185a44.png"
         },
         {
             "symbol": "WARP",
             "name": "Warp Token",
             "decimals": 18,
             "address": "0xed40834a13129509a89be39a9be9c0e96a0ddd71",
-            "logoURI": "https: //tokens.1inch.io/0xed40834a13129509a89be39a9be9c0e96a0ddd71.png"
+            "logoURI": "https://tokens.1inch.io/0xed40834a13129509a89be39a9be9c0e96a0ddd71.png"
         },
         {
             "symbol": "BADGER",
             "name": "Badger",
             "decimals": 18,
             "address": "0x3472a5a71965499acd81997a54bba8d852c6e53d",
-            "logoURI": "https: //tokens.1inch.io/0x3472a5a71965499acd81997a54bba8d852c6e53d.png"
+            "logoURI": "https://tokens.1inch.io/0x3472a5a71965499acd81997a54bba8d852c6e53d.png"
         },
         {
             "symbol": "SNX",
             "name": "Synthetix Network Token",
             "decimals": 18,
             "address": "0xc011a73ee8576fb46f5e1c5751ca3b9fe0af2a6f",
-            "logoURI": "https: //tokens.1inch.io/0xc011a73ee8576fb46f5e1c5751ca3b9fe0af2a6f.png"
+            "logoURI": "https://tokens.1inch.io/0xc011a73ee8576fb46f5e1c5751ca3b9fe0af2a6f.png"
         },
         {
             "symbol": "ALCX",
             "name": "Alchemix",
             "decimals": 18,
             "address": "0xdbdb4d16eda451d0503b854cf79d55697f90c8df",
-            "logoURI": "https: //tokens.1inch.io/0xdbdb4d16eda451d0503b854cf79d55697f90c8df.png"
+            "logoURI": "https://tokens.1inch.io/0xdbdb4d16eda451d0503b854cf79d55697f90c8df.png"
         },
         {
             "symbol": "GTC",
             "name": "Gitcoin",
             "decimals": 18,
             "address": "0xde30da39c46104798bb5aa3fe8b9e0e1f348163f",
-            "logoURI": "https: //tokens.1inch.io/0xde30da39c46104798bb5aa3fe8b9e0e1f348163f.png",
+            "logoURI": "https://tokens.1inch.io/0xde30da39c46104798bb5aa3fe8b9e0e1f348163f.png",
             "eip2612": true
         },
         {
@@ -335,14 +335,14 @@
             "name": "Neutrino",
             "decimals": 18,
             "address": "0x674c6ad92fd080e4004b2312b45f796a192d27a0",
-            "logoURI": "https: //tokens.1inch.io/0x674c6ad92fd080e4004b2312b45f796a192d27a0.png"
+            "logoURI": "https://tokens.1inch.io/0x674c6ad92fd080e4004b2312b45f796a192d27a0.png"
         },
         {
             "symbol": "FLX",
             "name": "Flex Ungovernance Token",
             "decimals": 18,
             "address": "0x6243d8cea23066d098a15582d81a598b4e8391f4",
-            "logoURI": "https: //tokens.1inch.io/0x6243d8cea23066d098a15582d81a598b4e8391f4.png"
+            "logoURI": "https://tokens.1inch.io/0x6243d8cea23066d098a15582d81a598b4e8391f4.png"
         },
         {
             "symbol": "TOKE",

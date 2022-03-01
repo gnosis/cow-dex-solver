@@ -348,31 +348,31 @@
             "symbol": "TOKE",
             "name": "Tokemak",
             "decimals": 18,
-            "address": "0x2e9d63788249371f1dfc918a52f8d799f4a38c94",
+            "address": "0x2e9d63788249371f1dfc918a52f8d799f4a38c94"
         },
         {
             "symbol": "RBN",
             "name": "Ribbon",
             "decimals": 18,
-            "address": "0x6123b0049f904d730db3c36a31167d9d4121fa6b",
+            "address": "0x6123b0049f904d730db3c36a31167d9d4121fa6b"
         },
         {
             "symbol": "SYN",
             "name": "Synapse",
             "decimals": 18,
-            "address": "0x0f2d719407fdbeff09d87557abb7232601fd9f29",
+            "address": "0x0f2d719407fdbeff09d87557abb7232601fd9f29"
         },
         {
             "symbol": "FOLD",
             "name": "Manifold Finance",
             "decimals": 18,
-            "address": "0xd084944d3c05cd115c09d072b9f44ba3e0e45921",
+            "address": "0xd084944d3c05cd115c09d072b9f44ba3e0e45921"
         },
         {
             "symbol": "VISR",
             "name": "VISOR",
             "decimals": 18,
-            "address": "0xf938424f7210f31df2aee3011291b658f872e91e",
+            "address": "0xf938424f7210f31df2aee3011291b658f872e91e"
         }
     ]
 }

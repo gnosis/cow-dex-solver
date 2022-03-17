@@ -480,7 +480,6 @@ pub struct SubTrade {
     pub src_amount: U256,
     pub dest_amount: U256,
 }
-
 async fn get_paraswap_sub_trades_from_order(
     index: usize,
     paraswap_solver: ParaswapSolver,

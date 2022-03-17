@@ -1,6 +1,9 @@
 pub mod api;
 use anyhow::{anyhow, Result};
 
+use self::api::BestRoute;
+use super::over_write_eth_with_weth_token;
+use super::SubTrade;
 use crate::models::batch_auction_model::OrderModel;
 use crate::models::batch_auction_model::TokenInfoModel;
 use api::{DefaultParaswapApi, ParaswapApi, PriceQuery, Root, Side};
@@ -8,11 +11,6 @@ use derivative::Derivative;
 use primitive_types::U256;
 use reqwest::Client;
 use std::collections::BTreeMap;
-
-use self::api::BestRoute;
-
-use super::over_write_eth_with_weth_token;
-use super::SubTrade;
 
 const REFERRER: &str = "GPv2";
 

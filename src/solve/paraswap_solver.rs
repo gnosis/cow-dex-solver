@@ -9,6 +9,11 @@ use primitive_types::U256;
 use reqwest::Client;
 use std::collections::BTreeMap;
 
+use self::api::BestRoute;
+
+use super::over_write_eth_with_weth_token;
+use super::SubTrade;
+
 const REFERRER: &str = "GPv2";
 
 /// A GPv2 solver that matches GP orders to direct ParaSwap swaps.
@@ -64,6 +69,178 @@ impl ParaswapSolver {
         };
         let price_response = self.client.get_full_price_info(price_query).await?;
         Ok((price_response, amount))
+    }
+}
+
+pub fn get_sub_trades_from_paraswap_price_response(best_routes: Vec<BestRoute>) -> Vec<SubTrade> {
+    let mut sub_trades = Vec::new();
+    for routes in best_routes {
+        for swap in routes.swaps {
+            for trade in &swap.swap_exchanges {
+                let src_token = over_write_eth_with_weth_token(swap.src_token);
+                let dest_token = over_write_eth_with_weth_token(swap.dest_token);
+                sub_trades.push(SubTrade {
+                    src_token,
+                    dest_token,
+                    src_amount: trade.src_amount,
+                    dest_amount: trade.dest_amount,
+                });
+            }
+        }
+    }
+    sub_trades
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_paraswap_sub_trades_from_order_considers_all_swaps_sent() {
+        // The following two routes are a the paraswap answer where not all 100% of tokens
+        // are traded through one route. In fact only 77% are traded through the route 1 and
+        // another 23% are traded through the second route. We check that still all swaps are being considered
+        let paraswap_answer_first_route: BestRoute = serde_json::from_str( r#"
+                    {
+                        "percent": 77.42,
+                        "swaps": [
+                            {
+                                "srcToken": "0xabe580e7ee158da464b51ee1a83ac0289622e6be",
+                                "srcDecimals": 18,
+                                "destToken": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+                                "destDecimals": 18,
+                                "swapExchanges": [
+                                    {
+                                        "exchange": "UniswapV3",
+                                        "srcAmount": "1552621324719407850295",
+                                        "destAmount": "3887106617214931870",
+                                        "percent": 78.79,
+                                        "poolAddresses": [
+                                            "0xeFC73F21bb4645Ea4Cb1f1B5A674985C590C4070"
+                                        ],
+                                        "data": {
+                                            "fee": 3000,
+                                            "gasUSD": "21.506796"
+                                        }
+                                    },
+                                    {
+                                        "exchange": "SushiSwap",
+                                        "srcAmount": "417960379455497404553",
+                                        "destAmount": "1043231499791370837",
+                                        "percent": 21.21,
+                                        "poolAddresses": [
+                                            "0xF39fF863730268C9bb867b3a69d031d1C1614b31"
+                                        ],
+                                        "data": {
+                                            "router": "0xF9234CB08edb93c0d4a4d4c70cC3FfD070e78e07",
+                                            "path": [
+                                                "0xabe580e7ee158da464b51ee1a83ac0289622e6be",
+                                                "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                                            ],
+                                            "factory": "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac",
+                                            "initCode": "0xe18a34eb0e04b04f7a0ac29a6e80748dca96319b42c54d679cb821dca90c6303",
+                                            "feeFactor": 10000,
+                                            "pools": [
+                                                {
+                                                    "address": "0xF39fF863730268C9bb867b3a69d031d1C1614b31",
+                                                    "fee": 30,
+                                                    "direction": true
+                                                }
+                                            ],
+                                            "gasUSD": "9.678058"
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "srcToken": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+                                "srcDecimals": 18,
+                                "destToken": "0x5a98fcbea516cf06857215779fd812ca3bef1b32",
+                                "destDecimals": 18,
+                                "swapExchanges": [
+                                    {
+                                        "exchange": "SushiSwap",
+                                        "srcAmount": "4930338117006302707",
+                                        "destAmount": "4765639130330925684247",
+                                        "percent": 100,
+                                        "poolAddresses": [
+                                            "0xC558F600B34A5f69dD2f0D06Cb8A88d829B7420a"
+                                        ],
+                                        "data": {
+                                            "router": "0xF9234CB08edb93c0d4a4d4c70cC3FfD070e78e07",
+                                            "path": [
+                                                "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                                                "0x5a98fcbea516cf06857215779fd812ca3bef1b32"
+                                            ],
+                                            "factory": "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac",
+                                            "initCode": "0xe18a34eb0e04b04f7a0ac29a6e80748dca96319b42c54d679cb821dca90c6303",
+                                            "feeFactor": 10000,
+                                            "pools": [
+                                                {
+                                                    "address": "0xC558F600B34A5f69dD2f0D06Cb8A88d829B7420a",
+                                                    "fee": 30,
+                                                    "direction": false
+                                                }
+                                            ],
+                                            "gasUSD": "9.678058"
+                                        }
+                                    }
+                                ]
+                            }
+                            ]
+                        }"#
+                    ).unwrap();
+        let paraswap_answer_second_route: BestRoute = serde_json::from_str( r#"
+            {
+                "percent": 22.58,
+                "swaps": [
+                    {
+                        "srcToken": "0xabe580e7ee158da464b51ee1a83ac0289622e6be",
+                        "srcDecimals": 18,
+                        "destToken": "0x5a98fcbea516cf06857215779fd812ca3bef1b32",
+                        "destDecimals": 18,
+                        "swapExchanges": [
+                            {
+                                "exchange": "SushiSwap",
+                                "srcAmount": "574731786105261697939",
+                                "destAmount": "1385937292004345249183",
+                                "percent": 100,
+                                "poolAddresses": [
+                                    "0xF39fF863730268C9bb867b3a69d031d1C1614b31",
+                                    "0xC558F600B34A5f69dD2f0D06Cb8A88d829B7420a"
+                                ],
+                                "data": {
+                                    "router": "0xF9234CB08edb93c0d4a4d4c70cC3FfD070e78e07",
+                                    "path": [
+                                        "0xabe580e7ee158da464b51ee1a83ac0289622e6be",
+                                        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                                        "0x5a98fcbea516cf06857215779fd812ca3bef1b32"
+                                    ],
+                                    "factory": "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac",
+                                    "initCode": "0xe18a34eb0e04b04f7a0ac29a6e80748dca96319b42c54d679cb821dca90c6303",
+                                    "feeFactor": 10000,
+                                    "pools": [
+                                        {
+                                            "address": "0xF39fF863730268C9bb867b3a69d031d1C1614b31",
+                                            "fee": 30,
+                                            "direction": true
+                                        },
+                                        {
+                                            "address": "0xC558F600B34A5f69dD2f0D06Cb8A88d829B7420a",
+                                            "fee": 30,
+                                            "direction": false
+                                        }
+                                    ],
+                                    "gasUSD": "19.356116"
+                                }
+                            }
+                        ]}]
+            } "#
+        ).unwrap();
+        let sub_trade_vec = get_sub_trades_from_paraswap_price_response(vec![
+            paraswap_answer_first_route,
+            paraswap_answer_second_route,
+        ]);
+        assert_eq!(sub_trade_vec.len(), 4);
     }
 }
 

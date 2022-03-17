@@ -11,6 +11,7 @@ use crate::token_list::get_buffer_tradable_token_list;
 use crate::token_list::BufferTradingTokenList;
 use crate::token_list::Token;
 
+use self::paraswap_solver::get_sub_trades_from_paraswap_price_response;
 use crate::solve::paraswap_solver::api::Root;
 use crate::solve::solver_utils::Slippage;
 use crate::solve::zeroex_solver::api::SwapQuery;
@@ -473,12 +474,13 @@ fn swap_tokens_are_tradable_buffer_tokens(
 }
 
 #[derive(Clone, Debug)]
-struct SubTrade {
+pub struct SubTrade {
     pub src_token: H160,
     pub dest_token: H160,
     pub src_amount: U256,
     pub dest_amount: U256,
 }
+
 async fn get_paraswap_sub_trades_from_order(
     index: usize,
     paraswap_solver: ParaswapSolver,
@@ -500,25 +502,16 @@ async fn get_paraswap_sub_trades_from_order(
             return Err(anyhow!("price estimation failed"));
         }
     };
-    let mut sub_trades = Vec::new();
-    let mut matched_orders = Vec::new();
     if satisfies_limit_price_with_buffer(&price_response, order) {
-        matched_orders.push((index, order.clone()));
-        for swap in &price_response.price_route.best_route.get(0).unwrap().swaps {
-            for trade in &swap.swap_exchanges {
-                let src_token = over_write_eth_with_weth_token(swap.src_token);
-                let dest_token = over_write_eth_with_weth_token(swap.dest_token);
-                sub_trades.push(SubTrade {
-                    src_token,
-                    dest_token,
-                    src_amount: trade.src_amount,
-                    dest_amount: trade.dest_amount,
-                });
-            }
-        }
+        Ok((
+            vec![(index, order.clone())],
+            get_sub_trades_from_paraswap_price_response(price_response.price_route.best_route),
+        ))
+    } else {
+        Ok((Vec::new(), Vec::new()))
     }
-    Ok(((matched_orders), sub_trades))
 }
+
 fn satisfies_limit_price_with_buffer(price_response: &Root, order: &OrderModel) -> bool {
     (price_response.price_route.dest_amount.ge(&order
         .buy_amount

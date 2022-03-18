@@ -632,7 +632,7 @@ fn one_token_is_already_in_settlement(
         0u64
     }
 }
-fn over_write_eth_with_weth_token(token: H160) -> H160 {
+fn overwrite_eth_with_weth_token(token: H160) -> H160 {
     if token.eq(&"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".parse().unwrap()) {
         "c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".parse().unwrap()
     } else {

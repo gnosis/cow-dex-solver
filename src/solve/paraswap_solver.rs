@@ -2,7 +2,7 @@ pub mod api;
 use anyhow::{anyhow, Result};
 
 use self::api::BestRoute;
-use super::over_write_eth_with_weth_token;
+use super::overwrite_eth_with_weth_token;
 use super::SubTrade;
 use crate::models::batch_auction_model::OrderModel;
 use crate::models::batch_auction_model::TokenInfoModel;
@@ -75,8 +75,8 @@ pub fn get_sub_trades_from_paraswap_price_response(best_routes: Vec<BestRoute>) 
     for routes in best_routes {
         for swap in routes.swaps {
             for trade in &swap.swap_exchanges {
-                let src_token = over_write_eth_with_weth_token(swap.src_token);
-                let dest_token = over_write_eth_with_weth_token(swap.dest_token);
+                let src_token = overwrite_eth_with_weth_token(swap.src_token);
+                let dest_token = overwrite_eth_with_weth_token(swap.dest_token);
                 sub_trades.push(SubTrade {
                     src_token,
                     dest_token,

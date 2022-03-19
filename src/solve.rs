@@ -11,6 +11,7 @@ use crate::token_list::get_buffer_tradable_token_list;
 use crate::token_list::BufferTradingTokenList;
 use crate::token_list::Token;
 
+use self::paraswap_solver::get_sub_trades_from_paraswap_price_response;
 use crate::solve::paraswap_solver::api::Root;
 use crate::solve::solver_utils::Slippage;
 use crate::solve::zeroex_solver::api::SwapQuery;
@@ -473,7 +474,7 @@ fn swap_tokens_are_tradable_buffer_tokens(
 }
 
 #[derive(Clone, Debug)]
-struct SubTrade {
+pub struct SubTrade {
     pub src_token: H160,
     pub dest_token: H160,
     pub src_amount: U256,
@@ -500,25 +501,16 @@ async fn get_paraswap_sub_trades_from_order(
             return Err(anyhow!("price estimation failed"));
         }
     };
-    let mut sub_trades = Vec::new();
-    let mut matched_orders = Vec::new();
     if satisfies_limit_price_with_buffer(&price_response, order) {
-        matched_orders.push((index, order.clone()));
-        for swap in &price_response.price_route.best_route.get(0).unwrap().swaps {
-            for trade in &swap.swap_exchanges {
-                let src_token = over_write_eth_with_weth_token(swap.src_token);
-                let dest_token = over_write_eth_with_weth_token(swap.dest_token);
-                sub_trades.push(SubTrade {
-                    src_token,
-                    dest_token,
-                    src_amount: trade.src_amount,
-                    dest_amount: trade.dest_amount,
-                });
-            }
-        }
+        Ok((
+            vec![(index, order.clone())],
+            get_sub_trades_from_paraswap_price_response(price_response.price_route.best_route),
+        ))
+    } else {
+        Ok((Vec::new(), Vec::new()))
     }
-    Ok(((matched_orders), sub_trades))
 }
+
 fn satisfies_limit_price_with_buffer(price_response: &Root, order: &OrderModel) -> bool {
     (price_response.price_route.dest_amount.ge(&order
         .buy_amount
@@ -640,7 +632,7 @@ fn one_token_is_already_in_settlement(
         0u64
     }
 }
-fn over_write_eth_with_weth_token(token: H160) -> H160 {
+fn overwrite_eth_with_weth_token(token: H160) -> H160 {
     if token.eq(&"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".parse().unwrap()) {
         "c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".parse().unwrap()
     } else {
@@ -717,7 +709,6 @@ mod tests {
     use super::*;
     use crate::models::batch_auction_model::CostModel;
     use crate::models::batch_auction_model::FeeModel;
-    use core::array::IntoIter;
     use std::collections::BTreeMap;
     use tracing_test::traced_test;
 
@@ -763,7 +754,7 @@ mod tests {
                 token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
             },
         };
-        let tokens = BTreeMap::from_iter(IntoIter::new([
+        let tokens = BTreeMap::from_iter(IntoIterator::into_iter([
             (
                 mim,
                 TokenInfoModel {
@@ -823,7 +814,7 @@ mod tests {
                 token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
             },
         };
-        let tokens = BTreeMap::from_iter(IntoIter::new([
+        let tokens = BTreeMap::from_iter(IntoIterator::into_iter([
             (
                 dai,
                 TokenInfoModel {
@@ -844,7 +835,7 @@ mod tests {
         assert!(is_market_order(&tokens, dai_usdc_sell_order.clone()).unwrap());
         assert!(is_market_order(&tokens, dai_usdc_buy_order.clone()).unwrap());
 
-        let tokens = BTreeMap::from_iter(IntoIter::new([
+        let tokens = BTreeMap::from_iter(IntoIterator::into_iter([
             (
                 dai,
                 TokenInfoModel {
@@ -882,7 +873,7 @@ mod tests {
                 token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
             },
         };
-        let tokens = BTreeMap::from_iter(IntoIter::new([
+        let tokens = BTreeMap::from_iter(IntoIterator::into_iter([
             (
                 weth,
                 TokenInfoModel {
@@ -929,7 +920,7 @@ mod tests {
         };
 
         let solution = solve(BatchAuctionModel {
-            tokens: BTreeMap::from_iter(IntoIter::new([
+            tokens: BTreeMap::from_iter(IntoIterator::into_iter([
                 (
                     dai,
                     TokenInfoModel {
@@ -945,7 +936,7 @@ mod tests {
                     },
                 ),
             ])),
-            orders: BTreeMap::from_iter(IntoIter::new([
+            orders: BTreeMap::from_iter(IntoIterator::into_iter([
                 (1, dai_gno_order.clone()),
                 (2, dai_gno_order.clone()),
                 (3, dai_gno_order),
@@ -1002,7 +993,7 @@ mod tests {
             },
         };
         let solution = solve(BatchAuctionModel {
-            tokens: BTreeMap::from_iter(IntoIter::new([
+            tokens: BTreeMap::from_iter(IntoIterator::into_iter([
                 (
                     dai,
                     TokenInfoModel {
@@ -1025,7 +1016,10 @@ mod tests {
                     },
                 ),
             ])),
-            orders: BTreeMap::from_iter(IntoIter::new([(1, gno_weth_order), (2, dai_gno_order)])),
+            orders: BTreeMap::from_iter(IntoIterator::into_iter([
+                (1, gno_weth_order),
+                (2, dai_gno_order),
+            ])),
             ..Default::default()
         })
         .await
@@ -1079,7 +1073,7 @@ mod tests {
             },
         };
         let solution = solve(BatchAuctionModel {
-            tokens: BTreeMap::from_iter(IntoIter::new([
+            tokens: BTreeMap::from_iter(IntoIterator::into_iter([
                 (
                     dai,
                     TokenInfoModel {
@@ -1102,7 +1096,10 @@ mod tests {
                     },
                 ),
             ])),
-            orders: BTreeMap::from_iter(IntoIter::new([(1, bal_dai_order), (2, dai_gno_order)])),
+            orders: BTreeMap::from_iter(IntoIterator::into_iter([
+                (1, bal_dai_order),
+                (2, dai_gno_order),
+            ])),
             ..Default::default()
         })
         .await
@@ -1135,7 +1132,7 @@ mod tests {
             },
         };
         let solution = solve(BatchAuctionModel {
-            tokens: BTreeMap::from_iter(IntoIter::new([
+            tokens: BTreeMap::from_iter(IntoIterator::into_iter([
                 (
                     free,
                     TokenInfoModel {
@@ -1151,7 +1148,7 @@ mod tests {
                     },
                 ),
             ])),
-            orders: BTreeMap::from_iter(IntoIter::new([
+            orders: BTreeMap::from_iter(IntoIterator::into_iter([
                 (1, free_weth_order.clone()),
                 (2, free_weth_order),
             ])),

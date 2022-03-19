@@ -1,8 +1,8 @@
+#![recursion_limit = "256"]
 use cowdexsolver::serve_task;
 use cowdexsolver::tracing_helper::initialize;
 use std::net::SocketAddr;
 use structopt::StructOpt;
-
 #[derive(Debug, StructOpt)]
 struct Arguments {
     #[structopt(long, env = "LOG_FILTER", default_value = "warn,debug,info")]

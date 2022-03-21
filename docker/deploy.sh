@@ -18,8 +18,7 @@ if [ "$1" == "main" ]; then
             -d '{"push_data": {"tag": "'$AUTODEPLOY_TAG'" }}' \
             -X POST \
             $AUTODEPLOY_URL)
-  sleep 60
-  if test $STATUSCODE -ne 200; then
+  if test $STATUS_CODE -ne 200; then
       echo "Restarting pod failed. Aborting ..."
       exit 1
   fi

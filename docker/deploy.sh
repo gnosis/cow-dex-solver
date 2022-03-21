@@ -10,11 +10,15 @@ docker push gnosispm/"${DOCKERHUB_PROJECT}":$1
 
 if [ "$1" == "main" ]; then
   # Notifying webhook
-  curl -s  \
-  --output /dev/null \
-  --write-out "%{http_code}" \
-  -H "Content-Type: application/json" \
-  -d '{"push_data": {"tag": "'$AUTODEPLOY_TAG'" }}' \
-  -X POST \
-  $AUTODEPLOY_URL
+  STATUS_CODE=$(curl -s  \
+            --output /dev/null \
+            --write-out "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -d '{"push_data": {"tag": "'$AUTODEPLOY_TAG'" }}' \
+            -X POST \
+            $AUTODEPLOY_URL)
+  if test $STATUSCODE -ne 200; then
+      echo "Restarting pod failed. Aborting ..."
+      exit 1
+  fi
 fi

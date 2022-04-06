@@ -17,6 +17,7 @@ pub struct BatchAuctionModel {
     pub instance_name: Option<String>,
     pub time_limit: Option<u64>,
     pub max_nr_exec_orders: Option<u64>,
+    pub auction_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -370,6 +371,7 @@ mod tests {
             instance_name: None,
             max_nr_exec_orders: None,
             time_limit: None,
+            auction_id: None,
         };
 
         let result = serde_json::to_value(&model).unwrap();
@@ -466,6 +468,7 @@ mod tests {
           "time_limit": null,
           "max_nr_exec_orders": null,
           "instance_name": null,
+          "auction_id": null,
         });
         assert_eq!(result, expected);
     }

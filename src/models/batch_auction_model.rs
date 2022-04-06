@@ -17,6 +17,7 @@ pub struct BatchAuctionModel {
     pub instance_name: Option<String>,
     pub time_limit: Option<u64>,
     pub max_nr_exec_orders: Option<u64>,
+    pub auction_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

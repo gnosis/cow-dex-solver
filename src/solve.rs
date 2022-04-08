@@ -1,6 +1,6 @@
 mod paraswap_solver;
-mod solver_utils;
-mod zeroex_solver;
+pub mod solver_utils;
+pub mod zeroex_solver;
 use crate::models::batch_auction_model::ExecutedOrderModel;
 use crate::models::batch_auction_model::InteractionData;
 use crate::models::batch_auction_model::OrderModel;
@@ -144,11 +144,11 @@ pub async fn solve(
     let tradable_buffer_token_list = get_buffer_tradable_token_list();
     while !swap_results.is_empty() {
         let (query, mut swap) = swap_results.pop().unwrap();
-        match insert_new_price(
-            &mut solution,
+        match solution.insert_new_price(
             &splitted_trade_amounts,
             query.clone(),
             swap.clone(),
+            &tokens,
         ) {
             Ok(()) => {}
             Err(err) => {
@@ -640,70 +640,6 @@ fn overwrite_eth_with_weth_token(token: H160) -> H160 {
     }
 }
 
-const SCALING_FACTOR: u64 = 10000u64;
-pub fn insert_new_price(
-    solution: &mut SettledBatchAuctionModel,
-    splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>,
-    query: SwapQuery,
-    swap: SwapResponse,
-) -> Result<()> {
-    let src_token = query.sell_token;
-    let dest_token = query.buy_token;
-    let (sell_amount, buy_amount) = match (
-        splitted_trade_amounts.get(&(src_token, dest_token)),
-        splitted_trade_amounts.get(&(dest_token, src_token)),
-    ) {
-        (Some((_sell_amount, _)), Some((buy_amount, substracted_sell_amount))) => {
-            (*substracted_sell_amount, *buy_amount)
-        }
-        (Some((_, _)), None) => (U256::zero(), U256::zero()),
-        (None, Some((_, _))) => (U256::zero(), U256::zero()),
-        (None, None) => (U256::zero(), U256::zero()),
-    };
-    let (sell_amount, buy_amount) = (
-        sell_amount.checked_add(swap.sell_amount).unwrap(),
-        buy_amount.checked_add(swap.buy_amount).unwrap(),
-    );
-
-    match (
-        solution.prices.clone().get(&query.sell_token),
-        solution.prices.clone().get(&query.buy_token),
-    ) {
-        (Some(_), Some(_)) => return Err(anyhow!("can't deal with such a ring")),
-        (Some(price_sell_token), None) => {
-            solution.prices.insert(
-                query.buy_token,
-                price_sell_token
-                    .checked_mul(sell_amount)
-                    .unwrap()
-                    .checked_div(buy_amount)
-                    .unwrap(),
-            );
-        }
-        (None, Some(price_buy_token)) => {
-            solution.prices.insert(
-                query.sell_token,
-                price_buy_token
-                    .checked_mul(buy_amount)
-                    .unwrap()
-                    .checked_div(sell_amount)
-                    .unwrap(),
-            );
-        }
-        (None, None) => {
-            solution.prices.insert(
-                query.sell_token,
-                buy_amount.checked_mul(U256::from(SCALING_FACTOR)).unwrap(),
-            );
-            solution.prices.insert(
-                query.buy_token,
-                sell_amount.checked_mul(U256::from(SCALING_FACTOR)).unwrap(),
-            );
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1159,174 +1095,4 @@ mod tests {
 
         println!("{:#?}", solution);
     }
-
-    //     #[test]
-    //     fn price_insert_without_cow_volume_inserts_new_prices_with_correct_ratios() {
-    //         let unrelated_token = shared::addr!("9f8f72aa9304c8b593d555f12ef6589cc3a579a2");
-    //         let sell_token = shared::addr!("6b175474e89094c44da98b954eedeac495271d0f");
-    //         let buy_token = shared::addr!("6810e776880c02933d47db1b9fc05908e5386b96");
-    //         let price_unrelated_token = U256::from_dec_str("12").unwrap();
-    //         // test token price already available in sell_token
-    //         let price_sell_token = U256::from_dec_str("10").unwrap();
-    //         let mut settlement = Settlement::new(maplit::hashmap! {
-    //             unrelated_token => price_unrelated_token,
-    //             sell_token => price_sell_token,
-    //         });
-    //         let splitted_trade_amounts = maplit::hashmap! {
-    //             (sell_token, buy_token) => (U256::from_dec_str("4").unwrap(),U256::from_dec_str("6").unwrap())
-    //         };
-    //         let query = SwapQuery {
-    //             sell_token,
-    //             buy_token,
-    //             sell_amount: None,
-    //             buy_amount: None,
-    //             slippage_percentage: Slippage::number_from_basis_points(STANDARD_ZEROEX_SLIPPAGE_BPS)
-    //                 .unwrap(),
-    //             skip_validation: None,
-    //         };
-    //         let sell_amount = U256::from_dec_str("4").unwrap();
-    //         let buy_amount = U256::from_dec_str("6").unwrap();
-    //         let swap = SwapResponse {
-    //             sell_amount,
-    //             buy_amount,
-    //             allowance_target: H160::zero(),
-    //             price: 1f64,
-    //             to: H160::zero(),
-    //             data: web3::types::Bytes::from([0u8; 8]),
-    //             value: U256::from_dec_str("4").unwrap(),
-    //         };
-    //         insert_new_price(&mut settlement, &splitted_trade_amounts, query, swap).unwrap();
-    //         assert_eq!(
-    //             settlement.clearing_price(sell_token),
-    //             Some(price_sell_token)
-    //         );
-    //         assert_eq!(
-    //             settlement.clearing_price(buy_token),
-    //             Some(
-    //                 sell_amount
-    //                     .checked_mul(price_sell_token)
-    //                     .unwrap()
-    //                     .checked_div(buy_amount)
-    //                     .unwrap()
-    //             )
-    //         );
-    //         // test token price already available in buy_token
-    //         let price_buy_token = U256::from_dec_str("10").unwrap();
-    //         let mut settlement = Settlement::new(maplit::hashmap! {
-    //             unrelated_token => price_unrelated_token,
-    //             buy_token => price_sell_token,
-    //         });
-    //         let splitted_trade_amounts = maplit::hashmap! {
-    //             (sell_token, buy_token) => (U256::from_dec_str("4").unwrap(),U256::from_dec_str("6").unwrap())
-    //         };
-    //         let query = SwapQuery {
-    //             sell_token,
-    //             buy_token,
-    //             sell_amount: None,
-    //             buy_amount: None,
-    //             slippage_percentage: Slippage::number_from_basis_points(STANDARD_ZEROEX_SLIPPAGE_BPS)
-    //                 .unwrap(),
-    //             skip_validation: None,
-    //         };
-    //         let sell_amount = U256::from_dec_str("4").unwrap();
-    //         let buy_amount = U256::from_dec_str("6").unwrap();
-    //         let swap = SwapResponse {
-    //             sell_amount,
-    //             buy_amount,
-    //             allowance_target: H160::zero(),
-    //             price: 1f64,
-    //             to: H160::zero(),
-    //             data: web3::types::Bytes::from([0u8; 8]),
-    //             value: U256::from_dec_str("4").unwrap(),
-    //         };
-    //         insert_new_price(&mut settlement, &splitted_trade_amounts, query, swap).unwrap();
-    //         assert_eq!(settlement.clearing_price(buy_token), Some(price_buy_token));
-    //         assert_eq!(
-    //             settlement.clearing_price(sell_token),
-    //             Some(
-    //                 buy_amount
-    //                     .checked_mul(price_buy_token)
-    //                     .unwrap()
-    //                     .checked_div(sell_amount)
-    //                     .unwrap()
-    //             )
-    //         );
-    //     }
-    //     #[test]
-    //     fn test_price_insert_without_cow_volume() {
-    //         let sell_token = shared::addr!("6b175474e89094c44da98b954eedeac495271d0f");
-    //         let buy_token = shared::addr!("6810e776880c02933d47db1b9fc05908e5386b96");
-    //         let mut settlement = Settlement::new(HashMap::new());
-    //         let splitted_trade_amounts = maplit::hashmap! {
-    //             (sell_token, buy_token) => (U256::from_dec_str("4").unwrap(),U256::from_dec_str("6").unwrap())
-    //         };
-    //         let query = SwapQuery {
-    //             sell_token,
-    //             buy_token,
-    //             sell_amount: None,
-    //             buy_amount: None,
-    //             slippage_percentage: Slippage::number_from_basis_points(STANDARD_ZEROEX_SLIPPAGE_BPS)
-    //                 .unwrap(),
-    //             skip_validation: None,
-    //         };
-    //         let sell_amount = U256::from_dec_str("4").unwrap();
-    //         let buy_amount = U256::from_dec_str("6").unwrap();
-    //         let swap = SwapResponse {
-    //             sell_amount,
-    //             buy_amount,
-    //             allowance_target: H160::zero(),
-    //             price: 1f64,
-    //             to: H160::zero(),
-    //             data: web3::types::Bytes::from([0u8; 8]),
-    //             value: U256::from_dec_str("4").unwrap(),
-    //         };
-    //         insert_new_price(&mut settlement, &splitted_trade_amounts, query, swap).unwrap();
-    //         assert_eq!(settlement.encoder.tokens, vec![buy_token, sell_token]);
-    //         assert_eq!(settlement.clearing_price(sell_token), Some(buy_amount));
-    //         assert_eq!(settlement.clearing_price(buy_token), Some(sell_amount));
-    //     }
-    //     #[test]
-    //     fn test_price_insert_with_cow_volume() {
-    //         let sell_token = shared::addr!("6b175474e89094c44da98b954eedeac495271d0f");
-    //         let buy_token = shared::addr!("6810e776880c02933d47db1b9fc05908e5386b96");
-    //         let mut settlement = Settlement::new(HashMap::new());
-    //         // cow volume is 3 sell token
-    //         // hence 2 sell tokens are in swap requested only
-    //         // assuming we get 4 buy token for the 2 swap token,
-    //         // we get in final a price of (3+5)/(6+4) = 5 / 10
-    //         let splitted_trade_amounts = maplit::hashmap! {
-    //             (sell_token, buy_token) => (U256::from_dec_str("5").unwrap(),U256::from_dec_str("8").unwrap()),
-    //             (buy_token, sell_token) => (U256::from_dec_str("6").unwrap(),U256::from_dec_str("3").unwrap())
-    //         };
-    //         let query = SwapQuery {
-    //             sell_token,
-    //             buy_token,
-    //             sell_amount: None,
-    //             buy_amount: None,
-    //             slippage_percentage: Slippage::number_from_basis_points(STANDARD_ZEROEX_SLIPPAGE_BPS)
-    //                 .unwrap(),
-    //             skip_validation: None,
-    //         };
-    //         let sell_amount = U256::from_dec_str("2").unwrap();
-    //         let buy_amount = U256::from_dec_str("4").unwrap();
-    //         let swap = SwapResponse {
-    //             sell_amount,
-    //             buy_amount,
-    //             allowance_target: H160::zero(),
-    //             price: 1f64,
-    //             to: H160::zero(),
-    //             data: web3::types::Bytes::from([0u8; 8]),
-    //             value: U256::from_dec_str("4").unwrap(),
-    //         };
-    //         insert_new_price(&mut settlement, &splitted_trade_amounts, query, swap).unwrap();
-    //         assert_eq!(settlement.encoder.tokens, vec![buy_token, sell_token]);
-    //         assert_eq!(
-    //             settlement.clearing_price(sell_token),
-    //             Some(U256::from_dec_str("10").unwrap())
-    //         );
-    //         assert_eq!(
-    //             settlement.clearing_price(buy_token),
-    //             Some(U256::from_dec_str("5").unwrap())
-    //         );
-    //     }
 }

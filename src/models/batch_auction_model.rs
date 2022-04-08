@@ -12,6 +12,7 @@ use primitive_types::H160;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use std::collections::HashSet;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Mul;
 
@@ -174,11 +175,11 @@ impl SettledBatchAuctionModel {
         self.prices.get(&token)
     }
 
-    pub fn tokens(&self) -> Vec<H160> {
+    pub fn tokens(&self) -> HashSet<H160> {
         self.prices
             .iter()
             .map(|(token, _)| *token)
-            .collect::<Vec<H160>>()
+            .collect::<HashSet<H160>>()
     }
 
     pub fn insert_new_price(
@@ -372,7 +373,7 @@ pub struct ExecutionPlanCoordinatesModel {
 mod tests {
     use super::*;
     use crate::solve::solver_utils::Slippage;
-    use maplit::btreemap;
+    use maplit::{btreemap, hashset};
     use num::rational::Ratio;
     use serde_json::json;
     use std::ops::Div;
@@ -942,7 +943,7 @@ mod tests {
         settlement
             .insert_new_price(&splitted_trade_amounts, query, swap, &tokens)
             .unwrap();
-        assert_eq!(settlement.tokens(), vec![buy_token, sell_token]);
+        assert_eq!(settlement.tokens(), hashset![buy_token, sell_token]);
         assert_eq!(
             settlement.price(sell_token),
             Some(&buy_amount.checked_mul(U256::from(SCALING_FACTOR)).unwrap())
@@ -988,7 +989,7 @@ mod tests {
         settlement
             .insert_new_price(&splitted_trade_amounts, query, swap, &tokens)
             .unwrap();
-        assert_eq!(settlement.tokens(), vec![buy_token, sell_token]);
+        assert_eq!(settlement.tokens(), hashset![buy_token, sell_token]);
         assert_eq!(
             settlement.price(sell_token),
             Some(

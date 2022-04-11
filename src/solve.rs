@@ -30,7 +30,7 @@ use std::time::Duration;
 ethcontract::contract!("contracts/artifacts/ERC20.json");
 
 lazy_static! {
-    pub static ref TEN_THOUSAND: U256 = U256::from_dec_str("1000").unwrap();
+    pub static ref THOUSAND: U256 = U256::from_dec_str("1000").unwrap();
 }
 
 pub async fn solve(
@@ -514,16 +514,16 @@ async fn get_paraswap_sub_trades_from_order(
 fn satisfies_limit_price_with_buffer(price_response: &Root, order: &OrderModel) -> bool {
     (price_response.price_route.dest_amount.ge(&order
         .buy_amount
-        .checked_mul(TEN_THOUSAND.checked_add(U256::one()).unwrap())
+        .checked_mul(THOUSAND.checked_add(U256::one()).unwrap())
         .unwrap()
-        .checked_div(*TEN_THOUSAND)
+        .checked_div(*THOUSAND)
         .unwrap())
         && order.is_sell_order)
         || (price_response.price_route.src_amount.le(&order
             .sell_amount
-            .checked_mul(TEN_THOUSAND.checked_sub(U256::one()).unwrap())
+            .checked_mul(THOUSAND.checked_sub(U256::one()).unwrap())
             .unwrap()
-            .checked_div(*TEN_THOUSAND)
+            .checked_div(*THOUSAND)
             .unwrap())
             && !order.is_sell_order)
 }

@@ -7,7 +7,7 @@ use structopt::StructOpt;
 struct Arguments {
     #[structopt(long, env = "LOG_FILTER", default_value = "warn,debug,info")]
     pub log_filter: String,
-    #[structopt(long, env = "BIND_ADDRESS", default_value = "127.0.0.1:8000")]
+    #[structopt(long, env = "BIND_ADDRESS", default_value = "0.0.0.0:8000")]
     bind_address: SocketAddr,
 }
 

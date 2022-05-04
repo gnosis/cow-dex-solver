@@ -25,9 +25,10 @@ Alternatively, the code can also be run via docker:
 
 Running api
 ```
-docker build -t gpdata -f docker/Dockerfile.binary . 
-docker run -ti cowdexsolver cowdexsolver    
+docker build -t cowdexsolver -f docker/Dockerfile.binary .
+docker run - p8000:8000 -ti cowdexsolver cowdexsolver --bind-address 0.0.0.0:8000
 ```
+
 
 ## How to run simulations together with the cowswap official driver:
 

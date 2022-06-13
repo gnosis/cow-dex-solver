@@ -230,11 +230,12 @@ pub async fn solve(
     Ok(solution)
 }
 
-fn swap_respects_limit_price(swap: &SwapResponse, order: &OrderModel) -> bool {
-    match order.is_sell_order {
-        false => swap.sell_amount <= order.sell_amount,
-        true => swap.buy_amount >= order.buy_amount,
-    }
+// Checks that swap respects buy and sell amount because 0x returned buy orders in the
+// past which did not respect the queried buy_amount.
+pub fn swap_respects_limit_price(swap: &SwapResponse, order: &OrderModel) -> bool {
+    // note: This would be different for partially fillable orders but OrderModel does currently not
+    // contain the remaining fill amount.
+    swap.sell_amount <= order.sell_amount && swap.buy_amount >= order.buy_amount
 }
 
 fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -> Result<bool> {

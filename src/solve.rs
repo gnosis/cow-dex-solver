@@ -708,6 +708,7 @@ mod tests {
 
     #[test]
     fn test_build_call_data_for_swap_and_approval() {
+        // Hacky HTTP initialiation, web3 is only needed for contract initialization later
         let http = Http::new("https://notneeded.com").unwrap();
         let web3 = Web3::new(http);
         let mim: H160 = "99d8a9c45b2eca8864373a26d1459e3dff1e17f3".parse().unwrap();

@@ -18,7 +18,7 @@ cargo run
 
 then post requests to it like:
 ```
-curl -vX POST "http://127.0.0.1:8000/solve" -H  "accept: application/json" -H  "Content-Type: application/json" --data "@/Users/alexherrmann/gnosis/gp-v2-solver-lib/data/test.json"
+curl -vX POST "http://127.0.0.1:8000/solve" -H  "accept: application/json" -H  "Content-Type: application/json" --data "@$PWD/data/test.json"
 ```
 
 Alternatively, the code can also be run via docker:
@@ -26,7 +26,7 @@ Alternatively, the code can also be run via docker:
 Running api
 ```
 docker build -t cowdexsolver -f docker/Dockerfile.binary .
-docker run - p8000:8000 -ti cowdexsolver cowdexsolver --bind-address 0.0.0.0:8000
+docker run -p8000:8000 -ti cowdexsolver cowdexsolver --bind-address 0.0.0.0:8000
 ```
 
 

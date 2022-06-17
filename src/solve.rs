@@ -713,7 +713,7 @@ mod tests {
         let web3 = Web3::new(http);
         let mim: H160 = "99d8a9c45b2eca8864373a26d1459e3dff1e17f3".parse().unwrap();
         let usdc: H160 = "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".parse().unwrap();
-        let mut tokens = BTreeMap::from_iter(IntoIterator::into_iter([
+        let mut tokens_with_max_buffer = BTreeMap::from_iter(IntoIterator::into_iter([
             (
                 mim,
                 TokenInfoModel {
@@ -733,7 +733,7 @@ mod tests {
                 },
             ),
         ]));
-        let mut allowances = HashMap::new();
+        let mut empty_allowances = HashMap::new();
         let query = SwapQuery {
             sell_token: mim,
             buy_token: usdc,
@@ -752,8 +752,8 @@ mod tests {
             value: U256::zero(),
         };
 
-        //Testing internal trades payload:
-        let buffer_trading_token_list = BufferTradingTokenList {
+        //Testing internal trades payload if buffers are available and in the allowlist
+        let buffer_trading_token_list_with_usdc_and_mim = BufferTradingTokenList {
             tokens: vec![
                 Token {
                     address: usdc,
@@ -769,9 +769,9 @@ mod tests {
             build_payload_for_swap_and_approval(
                 &swap,
                 &query,
-                &mut tokens,
-                &mut allowances,
-                &buffer_trading_token_list,
+                &mut tokens_with_max_buffer,
+                &mut empty_allowances,
+                &buffer_trading_token_list_with_usdc_and_mim,
                 &web3,
             )
             .unwrap();
@@ -798,14 +798,14 @@ mod tests {
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
 
         // Testing non-internal trade with required allowance
-        let buffer_trading_token_list = BufferTradingTokenList { tokens: vec![] };
+        let empty_buffer_trading_token_list = BufferTradingTokenList { tokens: vec![] };
         let (approval_interaction_data, swap_interaction_data) =
             build_payload_for_swap_and_approval(
                 &swap,
                 &query,
-                &mut tokens,
-                &mut allowances,
-                &buffer_trading_token_list,
+                &mut tokens_with_max_buffer,
+                &mut empty_allowances,
+                &empty_buffer_trading_token_list,
                 &web3,
             )
             .unwrap();
@@ -831,16 +831,59 @@ mod tests {
         );
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
 
-        // Testing non-internal trade without required allowance
-        let mut allowances = hashmap! { (mim, H160::zero()) => U256::max_value()};
-        let buffer_trading_token_list = BufferTradingTokenList { tokens: vec![] };
+        // Testing that a external trade is received, if the buffer_token list is empty (without required allowance)
+        let mut allowances_available = hashmap! { (mim, H160::zero()) => U256::max_value()};
         let (approval_interaction_data, swap_interaction_data) =
             build_payload_for_swap_and_approval(
                 &swap,
                 &query,
-                &mut tokens,
-                &mut allowances,
-                &buffer_trading_token_list,
+                &mut tokens_with_max_buffer,
+                &mut allowances_available,
+                &empty_buffer_trading_token_list,
+                &web3,
+            )
+            .unwrap();
+        let expected_approval_interaction_data = None;
+        let expected_swap_interaction_data = InteractionData {
+            target: H160::zero(),
+            value: U256::zero(),
+            call_data: vec![0u8],
+            exec_plan: None,
+        };
+        assert_eq!(
+            approval_interaction_data,
+            expected_approval_interaction_data
+        );
+        assert_eq!(swap_interaction_data, expected_swap_interaction_data);
+
+        // Testing that external trade is used, if not sufficient buffer balance is available
+        let mut tokens_without_buffer = BTreeMap::from_iter(IntoIterator::into_iter([
+            (
+                mim,
+                TokenInfoModel {
+                    decimals: Some(18u8),
+                    external_price: Some(0.00040788388716066107f64),
+                    internal_buffer: Some(U256::zero()),
+                    ..Default::default()
+                },
+            ),
+            (
+                usdc,
+                TokenInfoModel {
+                    decimals: Some(6u8),
+                    external_price: Some(405525120.6406718f64),
+                    internal_buffer: Some(U256::zero()),
+                    ..Default::default()
+                },
+            ),
+        ]));
+        let (approval_interaction_data, swap_interaction_data) =
+            build_payload_for_swap_and_approval(
+                &swap,
+                &query,
+                &mut tokens_without_buffer,
+                &mut allowances_available,
+                &buffer_trading_token_list_with_usdc_and_mim,
                 &web3,
             )
             .unwrap();

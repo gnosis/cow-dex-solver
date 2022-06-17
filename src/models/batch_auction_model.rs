@@ -4,7 +4,7 @@ use crate::utils::conversions::U256Ext;
 use crate::utils::ratio_as_decimal;
 use crate::utils::u256_decimal::{self, DecimalU256};
 use anyhow::{anyhow, Result};
-use ethcontract::Bytes;
+use derivative::Derivative;
 use num::bigint::{BigInt, Sign};
 use num::rational::Ratio;
 use num::BigRational;
@@ -141,11 +141,58 @@ pub struct FeeModel {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Derivative, Serialize, PartialEq)]
 pub struct InteractionData {
     pub target: H160,
     pub value: U256,
-    pub call_data: Bytes<Vec<u8>>,
+    #[derivative(Debug(format_with = "debug_bytes"))]
+    pub call_data: Vec<u8>,
+    pub exec_plan: Option<ExecutionPlan>,
+}
+
+pub fn debug_bytes(
+    bytes: impl AsRef<[u8]>,
+    formatter: &mut std::fmt::Formatter,
+) -> Result<(), std::fmt::Error> {
+    formatter.write_fmt(format_args!("0x{}", hex::encode(bytes.as_ref())))
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum ExecutionPlan {
+    /// The interaction should **not** be included in the settlement as
+    /// internal buffers will be used instead.
+    #[serde(with = "execution_plan_internal")]
+    Internal,
+}
+
+/// A module for implementing `serde` (de)serialization for the execution plan
+/// enum.
+///
+/// This is a work-around for untagged enum serialization not supporting empty
+/// variants <https://github.com/serde-rs/serde/issues/1560>.
+mod execution_plan_internal {
+    use super::*;
+
+    #[derive(Deserialize, Serialize)]
+    enum Kind {
+        #[serde(rename = "internal")]
+        Internal,
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<(), D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Kind::deserialize(deserializer)?;
+        Ok(())
+    }
+    pub fn serialize<S>(serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        Kind::serialize(&Kind::Internal, serializer)
+    }
 }
 
 #[serde_as]

@@ -148,6 +148,28 @@ pub struct InteractionData {
     #[derivative(Debug(format_with = "debug_bytes"))]
     pub call_data: Vec<u8>,
     pub exec_plan: Option<ExecutionPlan>,
+    #[serde(default)]
+
+    /// The input amounts into the AMM interaction - i.e. the amount of tokens
+    /// that are expected to be sent from the settlement contract into the AMM
+    /// for this calldata.
+    ///
+    /// `GPv2Settlement -> AMM`
+    pub inputs: Vec<TokenAmount>,
+    /// The output amounts from the AMM interaction - i.e. the amount of tokens
+    /// that are expected to be sent from the AMM into the settlement contract
+    /// for this calldata.
+    ///
+    /// `AMM -> GPv2Settlement`
+    #[serde(default)]
+    pub outputs: Vec<TokenAmount>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct TokenAmount {
+    #[serde(with = "u256_decimal")]
+    pub amount: U256,
+    pub token: H160,
 }
 
 pub fn debug_bytes(
@@ -425,6 +447,48 @@ mod tests {
     use serde_json::json;
     use std::ops::Div;
 
+    #[test]
+    fn test_serialize_and_deserialize_interaction_data() {
+        let mut interaction_data = InteractionData {
+            target: "ffffffffffffffffffffffffffffffffffffffff".parse().unwrap(),
+            value: U256::from_dec_str("1").unwrap(),
+            call_data: vec![1, 2],
+            exec_plan: Some(ExecutionPlan::Internal),
+            inputs: vec![TokenAmount {
+                token: H160([1; 20]),
+                amount: 9999.into(),
+            }],
+            outputs: vec![
+                TokenAmount {
+                    token: H160([2; 20]),
+                    amount: 2000.into(),
+                },
+                TokenAmount {
+                    token: H160([3; 20]),
+                    amount: 3000.into(),
+                },
+            ],
+        };
+        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":[1,2],"exec_plan":"internal","inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
+        assert_eq!(
+            serde_json::to_string(&interaction_data).unwrap(),
+            expected_string
+        );
+        assert_eq!(
+            serde_json::from_str::<InteractionData>(expected_string).unwrap(),
+            interaction_data
+        );
+        interaction_data.exec_plan = None;
+        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":[1,2],"exec_plan":null,"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
+        assert_eq!(
+            serde_json::to_string(&interaction_data).unwrap(),
+            expected_string
+        );
+        assert_eq!(
+            serde_json::from_str::<InteractionData>(expected_string).unwrap(),
+            interaction_data
+        );
+    }
     #[test]
     fn updated_amm_model_is_non_trivial() {
         assert!(!UpdatedAmmModel { execution: vec![] }.is_non_trivial());

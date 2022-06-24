@@ -6,6 +6,7 @@ use crate::models::batch_auction_model::ExecutionPlan;
 use crate::models::batch_auction_model::InteractionData;
 use crate::models::batch_auction_model::OrderModel;
 use crate::models::batch_auction_model::SettledBatchAuctionModel;
+use crate::models::batch_auction_model::TokenAmount;
 use crate::models::batch_auction_model::{BatchAuctionModel, TokenInfoModel};
 use crate::solve::paraswap_solver::ParaswapSolver;
 use crate::token_list::get_buffer_tradable_token_list;
@@ -224,6 +225,14 @@ fn build_payload_for_swap_and_approval(
             value: swap.value,
             call_data: swap.data.0.clone(),
             exec_plan: None,
+            inputs: vec![TokenAmount {
+                token: query.sell_token,
+                amount: swap.sell_amount,
+            }],
+            outputs: vec![TokenAmount {
+                token: query.buy_token,
+                amount: swap.buy_amount,
+            }],
         }
     };
     let mut approval_interaction_data = Some({
@@ -235,6 +244,8 @@ fn build_payload_for_swap_and_approval(
             value: 0.into(),
             call_data: calldata,
             exec_plan: None,
+            inputs: vec![],
+            outputs: vec![],
         }
     });
     if swap.buy_amount < available_buffer
@@ -784,11 +795,21 @@ mod tests {
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100,
             ],
             exec_plan: Some(ExecutionPlan::Internal),
+            inputs: vec![],
+            outputs: vec![],
         });
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
             call_data: vec![0u8],
+            outputs: vec![TokenAmount {
+                token: query.buy_token,
+                amount: swap.buy_amount,
+            }],
+            inputs: vec![TokenAmount {
+                token: query.sell_token,
+                amount: swap.sell_amount,
+            }],
             exec_plan: Some(ExecutionPlan::Internal),
         };
         assert_eq!(
@@ -818,12 +839,22 @@ mod tests {
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100,
             ],
             exec_plan: None,
+            inputs: vec![],
+            outputs: vec![],
         });
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
             call_data: vec![0u8],
             exec_plan: None,
+            outputs: vec![TokenAmount {
+                token: query.buy_token,
+                amount: swap.buy_amount,
+            }],
+            inputs: vec![TokenAmount {
+                token: query.sell_token,
+                amount: swap.sell_amount,
+            }],
         };
         assert_eq!(
             approval_interaction_data,
@@ -849,6 +880,14 @@ mod tests {
             value: U256::zero(),
             call_data: vec![0u8],
             exec_plan: None,
+            outputs: vec![TokenAmount {
+                token: query.buy_token,
+                amount: swap.buy_amount,
+            }],
+            inputs: vec![TokenAmount {
+                token: query.sell_token,
+                amount: swap.sell_amount,
+            }],
         };
         assert_eq!(
             approval_interaction_data,
@@ -893,38 +932,20 @@ mod tests {
             value: U256::zero(),
             call_data: vec![0u8],
             exec_plan: None,
+            outputs: vec![TokenAmount {
+                token: query.buy_token,
+                amount: swap.buy_amount,
+            }],
+            inputs: vec![TokenAmount {
+                token: query.sell_token,
+                amount: swap.sell_amount,
+            }],
         };
         assert_eq!(
             approval_interaction_data,
             expected_approval_interaction_data
         );
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
-    }
-
-    #[test]
-    fn test_serialize_interaction_data() {
-        let interaction_data = InteractionData {
-            target: "ffffffffffffffffffffffffffffffffffffffff".parse().unwrap(),
-            value: U256::from_dec_str("1").unwrap(),
-            call_data: vec![1, 2],
-            exec_plan: Some(ExecutionPlan::Internal),
-        };
-        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":[1,2],"exec_plan":"internal"}"#;
-        assert_eq!(
-            serde_json::to_string(&interaction_data).unwrap(),
-            expected_string
-        );
-        let interaction_data = InteractionData {
-            target: "ffffffffffffffffffffffffffffffffffffffff".parse().unwrap(),
-            value: U256::from_dec_str("1").unwrap(),
-            call_data: vec![1, 2],
-            exec_plan: None,
-        };
-        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":[1,2],"exec_plan":null}"#;
-        assert_eq!(
-            serde_json::to_string(&interaction_data).unwrap(),
-            expected_string
-        );
     }
 
     #[test]

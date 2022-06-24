@@ -448,8 +448,8 @@ mod tests {
     use std::ops::Div;
 
     #[test]
-    fn test_serialize_interaction_data() {
-        let interaction_data = InteractionData {
+    fn test_serialize_and_deserialize_interaction_data() {
+        let mut interaction_data = InteractionData {
             target: "ffffffffffffffffffffffffffffffffffffffff".parse().unwrap(),
             value: U256::from_dec_str("1").unwrap(),
             call_data: vec![1, 2],
@@ -474,30 +474,19 @@ mod tests {
             serde_json::to_string(&interaction_data).unwrap(),
             expected_string
         );
-        let interaction_data = InteractionData {
-            target: "ffffffffffffffffffffffffffffffffffffffff".parse().unwrap(),
-            value: U256::from_dec_str("1").unwrap(),
-            call_data: vec![1, 2],
-            exec_plan: None,
-            inputs: vec![TokenAmount {
-                token: H160([1; 20]),
-                amount: 9999.into(),
-            }],
-            outputs: vec![
-                TokenAmount {
-                    token: H160([2; 20]),
-                    amount: 2000.into(),
-                },
-                TokenAmount {
-                    token: H160([3; 20]),
-                    amount: 3000.into(),
-                },
-            ],
-        };
+        assert_eq!(
+            serde_json::from_str::<InteractionData>(&expected_string).unwrap(),
+            interaction_data
+        );
+        interaction_data.exec_plan = None;
         let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":[1,2],"exec_plan":null,"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
         assert_eq!(
             serde_json::to_string(&interaction_data).unwrap(),
             expected_string
+        );
+        assert_eq!(
+            serde_json::from_str::<InteractionData>(&expected_string).unwrap(),
+            interaction_data
         );
     }
     #[test]

@@ -475,7 +475,7 @@ mod tests {
             expected_string
         );
         assert_eq!(
-            serde_json::from_str::<InteractionData>(&expected_string).unwrap(),
+            serde_json::from_str::<InteractionData>(expected_string).unwrap(),
             interaction_data
         );
         interaction_data.exec_plan = None;
@@ -485,7 +485,7 @@ mod tests {
             expected_string
         );
         assert_eq!(
-            serde_json::from_str::<InteractionData>(&expected_string).unwrap(),
+            serde_json::from_str::<InteractionData>(expected_string).unwrap(),
             interaction_data
         );
     }

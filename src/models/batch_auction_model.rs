@@ -1064,6 +1064,7 @@ mod tests {
             Some(&sell_amount.checked_mul(U256::from(SCALING_FACTOR)).unwrap())
         );
     }
+
     #[test]
     fn test_price_insert_with_cow_volume() {
         let sell_token: H160 = "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap();

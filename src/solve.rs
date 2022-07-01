@@ -1383,67 +1383,59 @@ mod tests {
         let usdc = H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"));
         let weth = H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"));
 
+        let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(vec![
+            SubTrade {
+                src_token: usdc,
+                dest_token: weth,
+                src_amount: 7000000000_u128.into(),
+                dest_amount: 6887861098514148915_u128.into(),
+            },
+            SubTrade {
+                src_token: weth,
+                dest_token: usdc,
+                src_amount: 3979843491332154984_u128.into(),
+                dest_amount: 4057081604_u128.into(),
+            },
+            SubTrade {
+                src_token: weth,
+                dest_token: usdc,
+                src_amount: 4671990185476877589_u128.into(),
+                dest_amount: 4759375562_u128.into(),
+            },
+        ]);
+
+        let updated_traded_amounts =
+            get_trade_amounts_without_cow_volumes(&splitted_trade_amounts).unwrap();
+
+        assert_eq!(updated_traded_amounts.len(), 1);
         // Depending on the order that the subtrades are considered (which is
-        // random because of `HashMap`), it can either sell excess WETH or USDC.
-        // Deal with this by trying until we hit both cases.
-        let mut sold_usdc = false;
-        let mut sold_weth = false;
-
-        while !sold_usdc || !sold_weth {
-            let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(vec![
-                SubTrade {
-                    src_token: usdc,
-                    dest_token: weth,
-                    src_amount: 7000000000_u128.into(),
-                    dest_amount: 6887861098514148915_u128.into(),
-                },
-                SubTrade {
-                    src_token: weth,
-                    dest_token: usdc,
-                    src_amount: 3979843491332154984_u128.into(),
-                    dest_amount: 4057081604_u128.into(),
-                },
-                SubTrade {
-                    src_token: weth,
-                    dest_token: usdc,
-                    src_amount: 4671990185476877589_u128.into(),
-                    dest_amount: 4759375562_u128.into(),
-                },
-            ]);
-
-            let updated_traded_amounts =
-                get_trade_amounts_without_cow_volumes(&splitted_trade_amounts).unwrap();
-
-            assert_eq!(updated_traded_amounts.len(), 1);
-            if updated_traded_amounts.contains_key(&(usdc, weth)) {
-                assert_eq!(
-                    updated_traded_amounts,
-                    hashmap! {
-                        (usdc, weth) => TradeAmount {
-                            must_satisfy_limit_price: false,
-                            sell_amount: (4057081604_u128
-                                        + 4759375562_u128
-                                        - 7000000000_u128).into(),
-                            buy_amount: U256::zero(),
-                        },
-                    }
-                );
-                sold_usdc = true;
-            } else {
-                assert_eq!(
-                    updated_traded_amounts,
-                    hashmap! {
-                        (weth, usdc) => TradeAmount {
-                            must_satisfy_limit_price: false,
-                            sell_amount: (3979843491332154984_u128
-                                        + 4671990185476877589_u128
-                                        - 6887861098514148915_u128).into(),
-                            buy_amount: U256::zero(),
-                        },
-                    }
-                );
-                sold_weth = true;
-            }
+        // random because of `HashMap`), it can either sell excess WETH or USDC
+        if updated_traded_amounts.contains_key(&(usdc, weth)) {
+            assert_eq!(
+                updated_traded_amounts,
+                hashmap! {
+                    (usdc, weth) => TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: (4057081604_u128
+                                    + 4759375562_u128
+                                    - 7000000000_u128).into(),
+                        buy_amount: U256::zero(),
+                    },
+                }
+            )
+        } else {
+            assert_eq!(
+                updated_traded_amounts,
+                hashmap! {
+                    (weth, usdc) => TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: (3979843491332154984_u128
+                                    + 4671990185476877589_u128
+                                    - 6887861098514148915_u128).into(),
+                        buy_amount: U256::zero(),
+                    },
+                }
+            )
         }
     }
 }

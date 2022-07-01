@@ -14,7 +14,7 @@ impl<'de> DeserializeAs<'de, H160> for HexadecimalH160 {
     }
 }
 
-impl<'de> SerializeAs<H160> for HexadecimalH160 {
+impl SerializeAs<H160> for HexadecimalH160 {
     fn serialize_as<S>(source: &H160, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,

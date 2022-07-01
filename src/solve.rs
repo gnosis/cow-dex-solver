@@ -590,7 +590,7 @@ fn get_splitted_trade_amounts_from_trading_vec(
     splitted_trade_amounts
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct TradeAmount {
     must_satisfy_limit_price: bool,
     sell_amount: U256,
@@ -610,6 +610,7 @@ fn get_trade_amounts_without_cow_volumes(
         {
             continue;
         }
+
         if let Some((opposite_src_amount, opposite_dest_amount)) =
             splitted_trade_amounts.get(&(*dest_token, *src_token))
         {
@@ -694,7 +695,6 @@ mod tests {
     use crate::models::batch_auction_model::CostModel;
     use crate::models::batch_auction_model::FeeModel;
     use hex_literal::hex;
-    use maplit::btreemap;
     use maplit::hashmap;
     use std::collections::BTreeMap;
     use tracing_test::traced_test;
@@ -1379,163 +1379,63 @@ mod tests {
     }
 
     #[test]
-    fn foo() {
-        let tokens = btreemap! {
-            H160(hex!("2a54ba2964c8cd459dc568853f79813a60761b58")) => TokenInfoModel {
-                decimals: Some(18),
-                external_price: Some(0.000960752486041039),
-                normalize_priority: Some(0),
-                internal_buffer: Some(892197386698340084652_u128.into()),
-            },
-            H160(hex!("823556202e86763853b40e9cde725f412e294689")) => TokenInfoModel {
-                decimals: Some(18),
-                external_price: Some(0.00013042265011229),
-                normalize_priority: Some(0),
-                internal_buffer: Some(3895474666290266941968_u128.into()),
-            },
-            H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")) => TokenInfoModel {
-                decimals: Some(6),
-                external_price: Some(984008541.6428492),
-                normalize_priority: Some(0),
-                internal_buffer: Some(776148084_u128.into()),
-            },
-            H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")) => TokenInfoModel {
-                decimals: Some(18),
-                external_price: Some(1.0),
-                normalize_priority: Some(1),
-                internal_buffer: Some(683986972136188313_u128.into()),
-            },
-            H160(hex!("c0c293ce456ff0ed870add98a0828dd4d2903dbf")) => TokenInfoModel {
-                decimals: Some(18),
-                external_price: Some(0.001236251153755384),
-                normalize_priority: Some(0),
-                internal_buffer: Some(127183302594396738603_u128.into()),
-            },
-        };
+    fn combines_subtrades_joint_token_pairs() {
+        let usdc = H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"));
+        let weth = H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"));
 
         let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(vec![
             SubTrade {
-                src_token: H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
-                dest_token: H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
+                src_token: usdc,
+                dest_token: weth,
                 src_amount: 7000000000_u128.into(),
                 dest_amount: 6887861098514148915_u128.into(),
             },
             SubTrade {
-                src_token: H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
-                dest_token: H160(hex!("2a54ba2964c8cd459dc568853f79813a60761b58")),
-                src_amount: 6887861098514148915_u128.into(),
-                dest_amount: 7096817099255440060286_u128.into(),
-            },
-            SubTrade {
-                src_token: H160(hex!("823556202e86763853b40e9cde725f412e294689")),
-                dest_token: H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
-                src_amount: 643308913482989447036214_u128.into(),
-                dest_amount: 84409257890_u128.into(),
-            },
-            SubTrade {
-                src_token: H160(hex!("c0c293ce456ff0ed870add98a0828dd4d2903dbf")),
-                dest_token: H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
-                src_amount: 7055892566069565452396_u128.into(),
-                dest_amount: 8651833676809032573_u128.into(),
-            },
-            SubTrade {
-                src_token: H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
-                dest_token: H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
+                src_token: weth,
+                dest_token: usdc,
                 src_amount: 3979843491332154984_u128.into(),
                 dest_amount: 4057081604_u128.into(),
             },
             SubTrade {
-                src_token: H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
-                dest_token: H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
+                src_token: weth,
+                dest_token: usdc,
                 src_amount: 4671990185476877589_u128.into(),
                 dest_amount: 4759375562_u128.into(),
             },
         ]);
 
-        dbg!(&splitted_trade_amounts);
         let updated_traded_amounts =
             get_trade_amounts_without_cow_volumes(&splitted_trade_amounts).unwrap();
-        dbg!(&updated_traded_amounts);
 
-        let mut swap_results = vec![
-            (
-                SwapQuery {
-                    sell_token: H160(hex!("823556202e86763853b40e9cde725f412e294689")),
-                    buy_token: H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
-                    sell_amount: Some(643308913482989447036214_u128.into()),
-                    ..Default::default()
-                },
-                SwapResponse {
-                    sell_amount: 643308913482989447036214_u128.into(),
-                    buy_amount: 84409257890_u128.into(),
-                    price: 0.131211,
-                    ..Default::default()
-                },
-            ),
-            (
-                SwapQuery {
-                    sell_token: H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
-                    buy_token: H160(hex!("2a54ba2964c8cd459dc568853f79813a60761b58")),
-                    sell_amount: Some(6887861098514148915_u128.into()),
-                    ..Default::default()
-                },
-                SwapResponse {
-                    sell_amount: 6887861098514148915_u128.into(),
-                    buy_amount: 7096817099255440000000_u128.into(),
-                    price: 1030.336848805845856083,
-                    ..Default::default()
-                },
-            ),
-            (
-                SwapQuery {
-                    sell_token: H160(hex!("c0c293ce456ff0ed870add98a0828dd4d2903dbf")),
-                    buy_token: H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
-                    sell_amount: Some(7055892566069565452396_u128.into()),
-                    ..Default::default()
-                },
-                SwapResponse {
-                    sell_amount: 7055892566069565452396_u128.into(),
-                    buy_amount: 8662836405977801741_u128.into(),
-                    price: 0.001227744941530958,
-                    ..Default::default()
-                },
-            ),
-            (
-                SwapQuery {
-                    sell_token: H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
-                    buy_token: H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
-                    sell_amount: Some(1763972578294883658_u128.into()),
-                    ..Default::default()
-                },
-                SwapResponse {
-                    sell_amount: 1763972578294883658_u128.into(), // 1.763.972.578.294,8835 USDC!
-                    buy_amount: 73087375459939367920433_u128.into(),
-                    price: 0.000000041433396618,
-                    ..Default::default()
-                },
-            ),
-        ];
-
-        let mut solution = SettledBatchAuctionModel::default();
-        while let Some((query, swap)) = swap_results.pop() {
-            solution
-                .insert_new_price(&splitted_trade_amounts, query, swap, &tokens)
-                .unwrap();
+        assert_eq!(updated_traded_amounts.len(), 1);
+        // Depending on the order that the subtrades are considered (which is
+        // random because of `HashMap`), it can either sell excess WETH or USDC
+        if updated_traded_amounts.contains_key(&(usdc, weth)) {
+            assert_eq!(
+                updated_traded_amounts,
+                hashmap! {
+                    (usdc, weth) => TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: (4057081604_u128
+                                    + 4759375562_u128
+                                    - 7000000000_u128).into(),
+                        buy_amount: U256::zero(),
+                    },
+                }
+            )
+        } else {
+            assert_eq!(
+                updated_traded_amounts,
+                hashmap! {
+                    (weth, usdc) => TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: (3979843491332154984_u128
+                                    + 4671990185476877589_u128
+                                    - 6887861098514148915_u128).into(),
+                        buy_amount: U256::zero(),
+                    },
+                }
+            )
         }
-
-        let prices: BTreeMap<H160, U256> = btreemap! {
-            H160(hex!("2a54ba2964c8cd459dc568853f79813a60761b58"))
-                => 150674026575434252254026925580_u128.into(),
-            H160(hex!("c0c293ce456ff0ed870add98a0828dd4d2903dbf"))
-                => 190601265582557002007061689744_u128.into(),
-            H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"))
-                => 155245001738621201633877852343995_u128.into(),
-            H160(hex!("823556202e86763853b40e9cde725f412e294689"))
-                => 844092578900000000000000_u128.into(),
-            H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"))
-                => 6433089134829894470362140000000000000_u128.into(),
-        };
-
-        assert_eq!(prices, solution.prices.into_iter().collect());
     }
 }

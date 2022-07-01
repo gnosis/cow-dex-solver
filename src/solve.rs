@@ -144,8 +144,7 @@ pub async fn solve(
     // 5th step: Build settlements with price and interactions
     let mut solution = SettledBatchAuctionModel::default();
     let tradable_buffer_token_list = get_buffer_tradable_token_list();
-    while !swap_results.is_empty() {
-        let (query, swap) = swap_results.pop().unwrap();
+    while let Some((query, swap)) = swap_results.pop() {
         match solution.insert_new_price(
             &splitted_trade_amounts,
             query.clone(),
@@ -591,7 +590,7 @@ fn get_splitted_trade_amounts_from_trading_vec(
     splitted_trade_amounts
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct TradeAmount {
     must_satisfy_limit_price: bool,
     sell_amount: U256,
@@ -602,7 +601,7 @@ fn get_trade_amounts_without_cow_volumes(
     splitted_trade_amounts: &HashMap<(H160, H160), (U256, U256)>,
 ) -> Result<HashMap<(H160, H160), TradeAmount>> {
     let mut updated_traded_amounts = HashMap::new();
-    for (pair, entry_amouts) in splitted_trade_amounts {
+    for (pair, (src_amount, dest_amount)) in splitted_trade_amounts {
         let (src_token, dest_token) = pair;
         if updated_traded_amounts.get(pair).is_some()
             || updated_traded_amounts
@@ -611,31 +610,34 @@ fn get_trade_amounts_without_cow_volumes(
         {
             continue;
         }
-        if let Some(opposite_amounts) = splitted_trade_amounts.get(&(*dest_token, *src_token)) {
-            if entry_amouts.1.gt(&opposite_amounts.0) {
+
+        if let Some((opposite_src_amount, opposite_dest_amount)) =
+            splitted_trade_amounts.get(&(*dest_token, *src_token))
+        {
+            if dest_amount > opposite_src_amount {
                 updated_traded_amounts.insert(
                     (*dest_token, *src_token),
                     TradeAmount {
                         must_satisfy_limit_price: false,
-                        sell_amount: entry_amouts.1.checked_sub(opposite_amounts.0).unwrap(),
+                        sell_amount: dest_amount - opposite_src_amount,
                         buy_amount: U256::zero(),
                     },
                 );
-            } else if entry_amouts.0.gt(&opposite_amounts.1) {
+            } else if src_amount > opposite_dest_amount {
                 updated_traded_amounts.insert(
                     (*src_token, *dest_token),
                     TradeAmount {
                         must_satisfy_limit_price: false,
-                        sell_amount: entry_amouts.0.checked_sub(opposite_amounts.1).unwrap(),
+                        sell_amount: src_amount - opposite_dest_amount,
                         buy_amount: U256::zero(),
                     },
                 );
             } else {
                 updated_traded_amounts.insert(
-                    (*src_token, *dest_token),
+                    (*dest_token, *src_token),
                     TradeAmount {
                         must_satisfy_limit_price: false,
-                        sell_amount: opposite_amounts.0.checked_sub(entry_amouts.1).unwrap(),
+                        sell_amount: opposite_src_amount - dest_amount,
                         buy_amount: U256::zero(),
                     },
                 );
@@ -645,8 +647,8 @@ fn get_trade_amounts_without_cow_volumes(
                 (*src_token, *dest_token),
                 TradeAmount {
                     must_satisfy_limit_price: false,
-                    sell_amount: splitted_trade_amounts.get(pair).unwrap().0,
-                    buy_amount: splitted_trade_amounts.get(pair).unwrap().1,
+                    sell_amount: *src_amount,
+                    buy_amount: *dest_amount,
                 },
             );
         }
@@ -692,6 +694,7 @@ mod tests {
     use super::*;
     use crate::models::batch_auction_model::CostModel;
     use crate::models::batch_auction_model::FeeModel;
+    use hex_literal::hex;
     use maplit::hashmap;
     use std::collections::BTreeMap;
     use tracing_test::traced_test;
@@ -1373,5 +1376,66 @@ mod tests {
         .unwrap();
 
         println!("{:#?}", solution);
+    }
+
+    #[test]
+    fn combines_subtrades_joint_token_pairs() {
+        let usdc = H160(hex!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"));
+        let weth = H160(hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"));
+
+        let splitted_trade_amounts = get_splitted_trade_amounts_from_trading_vec(vec![
+            SubTrade {
+                src_token: usdc,
+                dest_token: weth,
+                src_amount: 7000000000_u128.into(),
+                dest_amount: 6887861098514148915_u128.into(),
+            },
+            SubTrade {
+                src_token: weth,
+                dest_token: usdc,
+                src_amount: 3979843491332154984_u128.into(),
+                dest_amount: 4057081604_u128.into(),
+            },
+            SubTrade {
+                src_token: weth,
+                dest_token: usdc,
+                src_amount: 4671990185476877589_u128.into(),
+                dest_amount: 4759375562_u128.into(),
+            },
+        ]);
+
+        let updated_traded_amounts =
+            get_trade_amounts_without_cow_volumes(&splitted_trade_amounts).unwrap();
+
+        assert_eq!(updated_traded_amounts.len(), 1);
+        // Depending on the order that the subtrades are considered (which is
+        // random because of `HashMap`), it can either sell excess WETH or USDC
+        if updated_traded_amounts.contains_key(&(usdc, weth)) {
+            assert_eq!(
+                updated_traded_amounts,
+                hashmap! {
+                    (usdc, weth) => TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: (4057081604_u128
+                                    + 4759375562_u128
+                                    - 7000000000_u128).into(),
+                        buy_amount: U256::zero(),
+                    },
+                }
+            )
+        } else {
+            assert_eq!(
+                updated_traded_amounts,
+                hashmap! {
+                    (weth, usdc) => TradeAmount {
+                        must_satisfy_limit_price: false,
+                        sell_amount: (3979843491332154984_u128
+                                    + 4671990185476877589_u128
+                                    - 6887861098514148915_u128).into(),
+                        buy_amount: U256::zero(),
+                    },
+                }
+            )
+        }
     }
 }

@@ -161,8 +161,8 @@ pub async fn solve(
                 &mut tokens,
                 &tradable_buffer_token_list,
             )?;
-
-        solution.approvals.append(&mut build_approval(&swap, &query));
+        // We will always push all approvals, the driver will filter out the unnecessary ones
+        solution.approvals.push(build_approval(&swap, &query));
         solution.interaction_data.push(swap_interaction_data);
         // Sort swap_results in such a way that the next pop contains a token already processed in the clearing prices, if there exists one.
         swap_results.sort_by(|a, b| {
@@ -196,12 +196,12 @@ pub fn swap_respects_limit_price(swap: &SwapResponse, order: &OrderModel) -> boo
 fn build_approval(
     swap: &SwapResponse,
     query: &SwapQuery,
-)-> Vec<ApprovalModel>{
-     vec![ApprovalModel{
+)-> ApprovalModel{
+     ApprovalModel{
          token:query.sell_token,
          spender: swap.allowance_target,
          amount:  swap.sell_amount,
-    }]
+    }
 }
 
 fn build_payload_for_swap(
@@ -676,21 +676,21 @@ mod tests {
             data: vec![0u8].into(),
             value: U256::zero(),
         };
-        let approvals =
+        let approval =
             build_approval(
                 &swap,
                 &query,
             );
-        let expected_approval = vec![ApprovalModel {
+        let expected_approval = ApprovalModel {
             token: query.sell_token,
             spender: swap.allowance_target,
             amount: swap.sell_amount,
-        }];
-        assert_eq!(approvals, expected_approval);
+        };
+        assert_eq!(approval, expected_approval);
     }
 
     #[test]
-    fn test_build_call_data_for_swap_and_approval() {
+    fn test_build_call_data_for_swap() {
         let mim: H160 = "99d8a9c45b2eca8864373a26d1459e3dff1e17f3".parse().unwrap();
         let usdc: H160 = "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".parse().unwrap();
         let mut tokens_with_max_buffer = BTreeMap::from_iter(IntoIterator::into_iter([

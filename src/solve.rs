@@ -154,13 +154,8 @@ pub async fn solve(
                 return Ok(SettledBatchAuctionModel::default());
             }
         }
-        let  swap_interaction_data =
-            build_payload_for_swap(
-                &swap,
-                &query,
-                &mut tokens,
-                &tradable_buffer_token_list,
-            )?;
+        let swap_interaction_data =
+            build_payload_for_swap(&swap, &query, &mut tokens, &tradable_buffer_token_list)?;
         // We will always push all approvals, the driver will filter out the unnecessary ones
         solution.approvals.push(build_approval(&swap, &query));
         solution.interaction_data.push(swap_interaction_data);
@@ -192,15 +187,12 @@ pub fn swap_respects_limit_price(swap: &SwapResponse, order: &OrderModel) -> boo
     // contain the remaining fill amount.
     swap.sell_amount <= order.sell_amount && swap.buy_amount >= order.buy_amount
 }
-                                                                                                                                                                                                           
-fn build_approval(
-    swap: &SwapResponse,
-    query: &SwapQuery,
-)-> ApprovalModel{
-     ApprovalModel{
-         token:query.sell_token,
-         spender: swap.allowance_target,
-         amount:  swap.sell_amount,
+
+fn build_approval(swap: &SwapResponse, query: &SwapQuery) -> ApprovalModel {
+    ApprovalModel {
+        token: query.sell_token,
+        spender: swap.allowance_target,
+        amount: swap.sell_amount,
     }
 }
 
@@ -232,7 +224,7 @@ fn build_payload_for_swap(
             }],
         }
     };
-    
+
     if swap.buy_amount < available_buffer
         && swap_tokens_are_tradable_buffer_tokens(query, tradable_buffer_token_list)
     {
@@ -250,7 +242,7 @@ fn build_payload_for_swap(
                 token_info.internal_buffer = Some(swap.sell_amount);
             }
         }
-    } 
+    }
     Ok(swap_interaction_data)
 }
 
@@ -658,7 +650,7 @@ mod tests {
     fn test_build_approval() {
         let mim: H160 = "99d8a9c45b2eca8864373a26d1459e3dff1e17f3".parse().unwrap();
         let usdc: H160 = "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".parse().unwrap();
-        
+
         let query = SwapQuery {
             sell_token: mim,
             buy_token: usdc,
@@ -676,11 +668,7 @@ mod tests {
             data: vec![0u8].into(),
             value: U256::zero(),
         };
-        let approval =
-            build_approval(
-                &swap,
-                &query,
-            );
+        let approval = build_approval(&swap, &query);
         let expected_approval = ApprovalModel {
             token: query.sell_token,
             spender: swap.allowance_target,
@@ -744,14 +732,13 @@ mod tests {
                 },
             ],
         };
-        let  swap_interaction_data =
-            build_payload_for_swap(
-                &swap,
-                &query,
-                &mut tokens_with_max_buffer,
-                &buffer_trading_token_list_with_usdc_and_mim,
-            )
-            .unwrap();
+        let swap_interaction_data = build_payload_for_swap(
+            &swap,
+            &query,
+            &mut tokens_with_max_buffer,
+            &buffer_trading_token_list_with_usdc_and_mim,
+        )
+        .unwrap();
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
@@ -770,14 +757,13 @@ mod tests {
 
         // Testing non-internal trade with required allowance
         let empty_buffer_trading_token_list = BufferTradingTokenList { tokens: vec![] };
-        let  swap_interaction_data =
-            build_payload_for_swap(
-                &swap,
-                &query,
-                &mut tokens_with_max_buffer,
-                &empty_buffer_trading_token_list,
-            )
-            .unwrap();
+        let swap_interaction_data = build_payload_for_swap(
+            &swap,
+            &query,
+            &mut tokens_with_max_buffer,
+            &empty_buffer_trading_token_list,
+        )
+        .unwrap();
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
@@ -795,14 +781,13 @@ mod tests {
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
 
         // Testing that a external trade is received, if the buffer_token list is empty (without required allowance)
-        let  swap_interaction_data =
-            build_payload_for_swap(
-                &swap,
-                &query,
-                &mut tokens_with_max_buffer,
-                &empty_buffer_trading_token_list,
-            )
-            .unwrap();
+        let swap_interaction_data = build_payload_for_swap(
+            &swap,
+            &query,
+            &mut tokens_with_max_buffer,
+            &empty_buffer_trading_token_list,
+        )
+        .unwrap();
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
@@ -840,14 +825,13 @@ mod tests {
                 },
             ),
         ]));
-        let  swap_interaction_data =
-            build_payload_for_swap(
-                &swap,
-                &query,
-                &mut tokens_without_buffer,
-                &buffer_trading_token_list_with_usdc_and_mim,
-            )
-            .unwrap();
+        let swap_interaction_data = build_payload_for_swap(
+            &swap,
+            &query,
+            &mut tokens_without_buffer,
+            &buffer_trading_token_list_with_usdc_and_mim,
+        )
+        .unwrap();
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),

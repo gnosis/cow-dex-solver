@@ -217,13 +217,13 @@ mod execution_plan_internal {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]                                                                                                                                                                        
-pub struct ApprovalModel {                                                                                                                                                                                                        
-    pub token: H160,                                                                                                                                                                                                              
-    pub spender: H160,                                                                                                                                                                                                            
-    #[serde(with = "u256_decimal")]                                                                                                                                                                                               
-    pub amount: U256,                                                                                                                                                                                                             
-}   
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ApprovalModel {
+    pub token: H160,
+    pub spender: H160,
+    #[serde(with = "u256_decimal")]
+    pub amount: U256,
+}
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Default, Serialize)]
@@ -233,9 +233,9 @@ pub struct SettledBatchAuctionModel {
     pub amms: HashMap<usize, UpdatedAmmModel>,
     pub ref_token: Option<H160>,
     #[serde_as(as = "HashMap<_, DecimalU256>")]
-    pub prices: HashMap<H160, U256>,                                                                                                                                                                                
-    #[serde(default)]                                                                                                                                                                                                             
-    pub approvals: Vec<ApprovalModel>,                                                                                                                                                                                            
+    pub prices: HashMap<H160, U256>,
+    #[serde(default)]
+    pub approvals: Vec<ApprovalModel>,
     pub interaction_data: Vec<InteractionData>,
 }
 const SCALING_FACTOR: u64 = 10000000000000u64;

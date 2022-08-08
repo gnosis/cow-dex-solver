@@ -1,6 +1,7 @@
 mod paraswap_solver;
 pub mod solver_utils;
 pub mod zeroex_solver;
+use crate::models::batch_auction_model::ApprovalModel;
 use crate::models::batch_auction_model::ExecutedOrderModel;
 use crate::models::batch_auction_model::ExecutionPlan;
 use crate::models::batch_auction_model::InteractionData;
@@ -20,8 +21,6 @@ use crate::solve::zeroex_solver::api::SwapQuery;
 use crate::solve::zeroex_solver::api::SwapResponse;
 use crate::solve::zeroex_solver::ZeroExSolver;
 use anyhow::{anyhow, Result};
-use ethcontract::batch::CallBatch;
-use ethcontract::prelude::*;
 use futures::future::join_all;
 use primitive_types::{H160, U256};
 use std::collections::BTreeMap;
@@ -136,12 +135,7 @@ pub async fn solve(
         }
     };
 
-    // 4th step: Get all approvals via a batch requests for the different swap
-    let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
-    let web3 = Web3::new(http);
-    let mut allowances = get_allowances_for_tokens_involved(&swap_results).await;
-
-    // 5th step: Build settlements with price and interactions
+    // 4th step: Build settlements with price and interactions
     let mut solution = SettledBatchAuctionModel::default();
     let tradable_buffer_token_list = get_buffer_tradable_token_list();
     while let Some((query, swap)) = swap_results.pop() {
@@ -160,19 +154,10 @@ pub async fn solve(
                 return Ok(SettledBatchAuctionModel::default());
             }
         }
-        let (approval_interaction_data, swap_interaction_data) =
-            build_payload_for_swap_and_approval(
-                &swap,
-                &query,
-                &mut tokens,
-                &mut allowances,
-                &tradable_buffer_token_list,
-                &web3,
-            )?;
-
-        if let Some(approval_interaction_data) = approval_interaction_data {
-            solution.interaction_data.push(approval_interaction_data);
-        }
+        let swap_interaction_data =
+            build_payload_for_swap(&swap, &query, &mut tokens, &tradable_buffer_token_list)?;
+        // We will always push all approvals, the driver will filter out the unnecessary ones
+        solution.approvals.push(build_approval(&swap, &query));
         solution.interaction_data.push(swap_interaction_data);
         // Sort swap_results in such a way that the next pop contains a token already processed in the clearing prices, if there exists one.
         swap_results.sort_by(|a, b| {
@@ -181,7 +166,7 @@ pub async fn solve(
         })
     }
 
-    // 6th step: Insert traded orders into settlement
+    // 5th step: Insert traded orders into settlement
     for (i, order) in matched_orders {
         solution.orders.insert(
             i,
@@ -203,21 +188,26 @@ pub fn swap_respects_limit_price(swap: &SwapResponse, order: &OrderModel) -> boo
     swap.sell_amount <= order.sell_amount && swap.buy_amount >= order.buy_amount
 }
 
-fn build_payload_for_swap_and_approval(
+fn build_approval(swap: &SwapResponse, query: &SwapQuery) -> ApprovalModel {
+    ApprovalModel {
+        token: query.sell_token,
+        spender: swap.allowance_target,
+        amount: swap.sell_amount,
+    }
+}
+
+fn build_payload_for_swap(
     swap: &SwapResponse,
     query: &SwapQuery,
     tokens: &mut BTreeMap<H160, TokenInfoModel>,
-    allowances: &mut HashMap<(Address, Address), U256>,
     tradable_buffer_token_list: &BufferTradingTokenList,
-    web3: &Web3<Http>,
-) -> Result<(Option<InteractionData>, InteractionData)> {
+) -> Result<InteractionData> {
     let available_buffer = tokens
         .clone()
         .get(&query.buy_token)
         .unwrap_or(&TokenInfoModel::default())
         .internal_buffer
         .unwrap_or_else(U256::zero);
-    let spender = swap.allowance_target;
     let mut swap_interaction_data = {
         InteractionData {
             target: swap.to,
@@ -234,27 +224,11 @@ fn build_payload_for_swap_and_approval(
             }],
         }
     };
-    let mut approval_interaction_data = Some({
-        let token = ERC20::at(web3, query.sell_token);
-        let method = token.approve(spender, swap.sell_amount);
-        let calldata = method.tx.data.expect("no calldata").0;
-        InteractionData {
-            target: query.sell_token,
-            value: 0.into(),
-            call_data: calldata,
-            exec_plan: None,
-            inputs: vec![],
-            outputs: vec![],
-        }
-    });
+
     if swap.buy_amount < available_buffer
         && swap_tokens_are_tradable_buffer_tokens(query, tradable_buffer_token_list)
     {
         // Trade against internal buffer
-        if let Some(mut interaction_data) = approval_interaction_data {
-            interaction_data.exec_plan = Some(ExecutionPlan::Internal);
-            approval_interaction_data = Some(interaction_data);
-        }
         swap_interaction_data.exec_plan = Some(ExecutionPlan::Internal);
 
         // Adjust buffer balances
@@ -268,19 +242,8 @@ fn build_payload_for_swap_and_approval(
                 token_info.internal_buffer = Some(swap.sell_amount);
             }
         }
-    } else {
-        // Use external trade
-        // Interaction data can stay as defined above, but allowance needs to be checked
-        let allowance = allowances
-            .entry((query.sell_token, spender))
-            .or_insert_with(U256::zero);
-        if allowance.clone().ge(&swap.sell_amount) {
-            // Skip allowance interaction if not necessary
-            approval_interaction_data = None;
-            *allowance = allowance.checked_sub(swap.sell_amount).unwrap()
-        }
     }
-    Ok((approval_interaction_data, swap_interaction_data))
+    Ok(swap_interaction_data)
 }
 
 fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -> Result<bool> {
@@ -302,43 +265,6 @@ fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -
         || (!order.is_sell_order
             && (order.buy_amount.as_u128() as f64) * (buy_token_price)
                 < (order.sell_amount.as_u128() as f64) * sell_token_price * 1.02f64))
-}
-
-async fn get_allowances_for_tokens_involved(
-    swap_results: &[(SwapQuery, SwapResponse)],
-) -> HashMap<(Address, Address), U256> {
-    let http = Http::new("https://staging-openethereum.mainnet.gnosisdev.com").unwrap();
-    let web3 = Web3::new(http);
-    let settlement_contract_address: H160 =
-        "9008d19f58aabd9ed0d60971565aa8510560ab41".parse().unwrap();
-    let mut batch = CallBatch::new(web3.transport());
-    let mut calls = Vec::new();
-    for (query, swap) in swap_results {
-        let token = ERC20::at(&web3, query.sell_token);
-        calls.push(
-            token
-                .allowance(settlement_contract_address, swap.allowance_target)
-                .batch_call(&mut batch),
-        )
-    }
-    batch.execute_all(usize::MAX).await;
-    let mut allowances: HashMap<(Address, Address), U256> = HashMap::new();
-    for (id, call) in calls.into_iter().enumerate() {
-        let call_result = call.await.unwrap_or_else(|_| U256::zero());
-        if let Some((query, swap)) = swap_results.get(id) {
-            tracing::debug!(
-                "Call {} returned {} for query:{:?} and swap:{:?}",
-                id,
-                call_result,
-                query,
-                swap
-            );
-            allowances.insert((query.sell_token, swap.allowance_target), call_result);
-        } else {
-            tracing::debug!("Call {} returned {}", id, call_result);
-        }
-    }
-    allowances
 }
 
 async fn get_swaps_for_orders_from_zeroex(
@@ -721,10 +647,38 @@ mod tests {
     }
 
     #[test]
-    fn test_build_call_data_for_swap_and_approval() {
-        // Hacky HTTP initialiation, web3 is only needed for contract initialization later
-        let http = Http::new("https://notneeded.com").unwrap();
-        let web3 = Web3::new(http);
+    fn test_build_approval() {
+        let mim: H160 = "99d8a9c45b2eca8864373a26d1459e3dff1e17f3".parse().unwrap();
+        let usdc: H160 = "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".parse().unwrap();
+
+        let query = SwapQuery {
+            sell_token: mim,
+            buy_token: usdc,
+            sell_amount: Some(U256::MAX),
+            buy_amount: None,
+            slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+            skip_validation: Some(true),
+        };
+        let swap = SwapResponse {
+            sell_amount: U256::from_dec_str("100").unwrap(),
+            buy_amount: U256::from_dec_str("100").unwrap(),
+            allowance_target: H160::zero(),
+            price: 0f64,
+            to: H160::zero(),
+            data: vec![0u8].into(),
+            value: U256::zero(),
+        };
+        let approval = build_approval(&swap, &query);
+        let expected_approval = ApprovalModel {
+            token: query.sell_token,
+            spender: swap.allowance_target,
+            amount: swap.sell_amount,
+        };
+        assert_eq!(approval, expected_approval);
+    }
+
+    #[test]
+    fn test_build_call_data_for_swap() {
         let mim: H160 = "99d8a9c45b2eca8864373a26d1459e3dff1e17f3".parse().unwrap();
         let usdc: H160 = "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".parse().unwrap();
         let mut tokens_with_max_buffer = BTreeMap::from_iter(IntoIterator::into_iter([
@@ -747,7 +701,6 @@ mod tests {
                 },
             ),
         ]));
-        let mut empty_allowances = HashMap::new();
         let query = SwapQuery {
             sell_token: mim,
             buy_token: usdc,
@@ -779,28 +732,13 @@ mod tests {
                 },
             ],
         };
-        let (approval_interaction_data, swap_interaction_data) =
-            build_payload_for_swap_and_approval(
-                &swap,
-                &query,
-                &mut tokens_with_max_buffer,
-                &mut empty_allowances,
-                &buffer_trading_token_list_with_usdc_and_mim,
-                &web3,
-            )
-            .unwrap();
-        let expected_approval_interaction_data = Some(InteractionData {
-            target: mim,
-            value: U256::zero(),
-            call_data: vec![
-                9, 94, 167, 179, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100,
-            ],
-            exec_plan: Some(ExecutionPlan::Internal),
-            inputs: vec![],
-            outputs: vec![],
-        });
+        let swap_interaction_data = build_payload_for_swap(
+            &swap,
+            &query,
+            &mut tokens_with_max_buffer,
+            &buffer_trading_token_list_with_usdc_and_mim,
+        )
+        .unwrap();
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
@@ -815,36 +753,17 @@ mod tests {
             }],
             exec_plan: Some(ExecutionPlan::Internal),
         };
-        assert_eq!(
-            approval_interaction_data,
-            expected_approval_interaction_data
-        );
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
 
         // Testing non-internal trade with required allowance
         let empty_buffer_trading_token_list = BufferTradingTokenList { tokens: vec![] };
-        let (approval_interaction_data, swap_interaction_data) =
-            build_payload_for_swap_and_approval(
-                &swap,
-                &query,
-                &mut tokens_with_max_buffer,
-                &mut empty_allowances,
-                &empty_buffer_trading_token_list,
-                &web3,
-            )
-            .unwrap();
-        let expected_approval_interaction_data = Some(InteractionData {
-            target: mim,
-            value: U256::zero(),
-            call_data: vec![
-                9, 94, 167, 179, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100,
-            ],
-            exec_plan: None,
-            inputs: vec![],
-            outputs: vec![],
-        });
+        let swap_interaction_data = build_payload_for_swap(
+            &swap,
+            &query,
+            &mut tokens_with_max_buffer,
+            &empty_buffer_trading_token_list,
+        )
+        .unwrap();
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
@@ -859,25 +778,16 @@ mod tests {
                 amount: swap.sell_amount,
             }],
         };
-        assert_eq!(
-            approval_interaction_data,
-            expected_approval_interaction_data
-        );
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
 
         // Testing that a external trade is received, if the buffer_token list is empty (without required allowance)
-        let mut allowances_available = hashmap! { (mim, H160::zero()) => U256::max_value()};
-        let (approval_interaction_data, swap_interaction_data) =
-            build_payload_for_swap_and_approval(
-                &swap,
-                &query,
-                &mut tokens_with_max_buffer,
-                &mut allowances_available,
-                &empty_buffer_trading_token_list,
-                &web3,
-            )
-            .unwrap();
-        let expected_approval_interaction_data = None;
+        let swap_interaction_data = build_payload_for_swap(
+            &swap,
+            &query,
+            &mut tokens_with_max_buffer,
+            &empty_buffer_trading_token_list,
+        )
+        .unwrap();
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
@@ -892,10 +802,6 @@ mod tests {
                 amount: swap.sell_amount,
             }],
         };
-        assert_eq!(
-            approval_interaction_data,
-            expected_approval_interaction_data
-        );
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
 
         // Testing that external trade is used, if not sufficient buffer balance is available
@@ -919,17 +825,13 @@ mod tests {
                 },
             ),
         ]));
-        let (approval_interaction_data, swap_interaction_data) =
-            build_payload_for_swap_and_approval(
-                &swap,
-                &query,
-                &mut tokens_without_buffer,
-                &mut allowances_available,
-                &buffer_trading_token_list_with_usdc_and_mim,
-                &web3,
-            )
-            .unwrap();
-        let expected_approval_interaction_data = None;
+        let swap_interaction_data = build_payload_for_swap(
+            &swap,
+            &query,
+            &mut tokens_without_buffer,
+            &buffer_trading_token_list_with_usdc_and_mim,
+        )
+        .unwrap();
         let expected_swap_interaction_data = InteractionData {
             target: H160::zero(),
             value: U256::zero(),
@@ -944,10 +846,6 @@ mod tests {
                 amount: swap.sell_amount,
             }],
         };
-        assert_eq!(
-            approval_interaction_data,
-            expected_approval_interaction_data
-        );
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
     }
 

@@ -166,7 +166,7 @@ pub struct InteractionData {
     pub outputs: Vec<TokenAmount>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenAmount {
     #[serde(with = "u256_decimal")]
     pub amount: U256,
@@ -218,7 +218,7 @@ mod execution_plan_internal {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ApprovalModel {
     pub token: H160,
     pub spender: H160,

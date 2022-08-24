@@ -21,13 +21,13 @@ pub fn get_buffer_tradable_token_list() -> BufferTradingTokenList {
     list
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BufferTradingTokenList {
     pub tokens: Vec<Token>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Token {
     #[serde(with = "h160_hexadecimal")]

@@ -1,3 +1,4 @@
+use crate::models::bytes_hex;
 use crate::solve::zeroex_solver::api::SwapQuery;
 use crate::solve::zeroex_solver::api::SwapResponse;
 use crate::utils::conversions::U256Ext;
@@ -141,11 +142,11 @@ pub struct FeeModel {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, Derivative, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Derivative, Serialize, PartialEq, Eq)]
 pub struct InteractionData {
     pub target: H160,
     pub value: U256,
-    #[derivative(Debug(format_with = "debug_bytes"))]
+    #[serde(with = "bytes_hex")]
     pub call_data: Vec<u8>,
     pub exec_plan: Option<ExecutionPlan>,
     #[serde(default)]
@@ -165,7 +166,7 @@ pub struct InteractionData {
     pub outputs: Vec<TokenAmount>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenAmount {
     #[serde(with = "u256_decimal")]
     pub amount: U256,
@@ -217,7 +218,7 @@ mod execution_plan_internal {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ApprovalModel {
     pub token: H160,
     pub spender: H160,
@@ -479,7 +480,7 @@ mod tests {
                 },
             ],
         };
-        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":[1,2],"exec_plan":"internal","inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
+        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":"internal","inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
         assert_eq!(
             serde_json::to_string(&interaction_data).unwrap(),
             expected_string
@@ -489,7 +490,7 @@ mod tests {
             interaction_data
         );
         interaction_data.exec_plan = None;
-        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":[1,2],"exec_plan":null,"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
+        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":null,"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
         assert_eq!(
             serde_json::to_string(&interaction_data).unwrap(),
             expected_string

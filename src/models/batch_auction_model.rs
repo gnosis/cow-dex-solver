@@ -142,7 +142,7 @@ pub struct FeeModel {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, Derivative, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Derivative, Serialize, PartialEq, Eq)]
 pub struct InteractionData {
     pub target: H160,
     pub value: U256,

@@ -51,8 +51,8 @@ pub async fn solve(
     }
 
     let mut orders: Vec<(usize, OrderModel)> = orders.into_iter().map(|(i, y)| (i, y)).collect();
-    // Filter out zero fee orders, as CowDexSolver is not good at matching them. 
-    // Also they increase the revert risk, as Market Maker orders - at least the ones from zero - are often timing out and then cause simulation errors.
+    // Filter out zero fee orders, as CowDexSolver is not good at matching liquidity orders. 
+    // Also they increase the revert risk, as Market Maker orders - at least the ones from zeroEx - can timing out and then cause simulation errors.
     orders = orders
         .into_iter()
         .filter(|(_, order)| !is_zero_fee_order(order.clone()))

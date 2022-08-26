@@ -142,10 +142,12 @@ pub struct FeeModel {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, Derivative, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Derivative, Serialize, PartialEq, Eq)]
+#[derivative(Debug)]
 pub struct InteractionData {
     pub target: H160,
     pub value: U256,
+    #[derivative(Debug(format_with = "debug_bytes"))]
     #[serde(with = "bytes_hex")]
     pub call_data: Vec<u8>,
     pub exec_plan: Option<ExecutionPlan>,

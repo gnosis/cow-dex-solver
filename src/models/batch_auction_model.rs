@@ -21,7 +21,6 @@ use std::ops::Mul;
 pub struct BatchAuctionModel {
     pub tokens: BTreeMap<H160, TokenInfoModel>,
     pub orders: BTreeMap<usize, OrderModel>,
-    pub amms: BTreeMap<usize, AmmModel>,
     pub metadata: Option<MetadataModel>,
     pub instance_name: Option<String>,
     pub time_limit: Option<u64>,
@@ -242,15 +241,6 @@ pub struct SettledBatchAuctionModel {
 const SCALING_FACTOR: u64 = 10000000000000u64;
 
 impl SettledBatchAuctionModel {
-    pub fn has_execution_plan(&self) -> bool {
-        // Its a bit weird that we expect all entries to contain an execution plan. Could make
-        // execution plan required and assert that the vector of execution updates is non-empty
-        self.amms
-            .values()
-            .flat_map(|u| &u.execution)
-            .all(|u| u.exec_plan.is_some())
-    }
-
     pub fn price(&self, token: H160) -> Option<&U256> {
         self.prices.get(&token)
     }
@@ -574,59 +564,6 @@ mod tests {
             },
             is_liquidity_order: false,
         };
-        let constant_product_pool_model = AmmModel {
-            parameters: AmmParameters::ConstantProduct(ConstantProductPoolParameters {
-                reserves: btreemap! {
-                    buy_token => U256::from(100),
-                    sell_token => U256::from(200),
-                },
-            }),
-            fee: BigRational::new(3.into(), 1000.into()),
-            cost: CostModel {
-                amount: U256::from(3),
-                token: native_token,
-            },
-            mandatory: false,
-        };
-        let weighted_product_pool_model = AmmModel {
-            parameters: AmmParameters::WeightedProduct(WeightedProductPoolParameters {
-                reserves: btreemap! {
-                    sell_token => WeightedPoolTokenData {
-                        balance: U256::from(808),
-                        weight: BigRational::new(2.into(), 10.into()),
-                    },
-                    buy_token => WeightedPoolTokenData {
-                        balance: U256::from(64),
-                        weight: BigRational::new(8.into(), 10.into()),
-                    }
-                },
-            }),
-            fee: BigRational::new(2.into(), 1000.into()),
-            cost: CostModel {
-                amount: U256::from(2),
-                token: native_token,
-            },
-            mandatory: true,
-        };
-        let stable_pool_model = AmmModel {
-            parameters: AmmParameters::Stable(StablePoolParameters {
-                reserves: btreemap! {
-                    sell_token => U256::from(1000),
-                    buy_token => U256::from(1_001_000_000),
-                },
-                scaling_rates: btreemap! {
-                    sell_token => U256::from(1),
-                    buy_token => U256::from(1_000_000),
-                },
-                amplification_parameter: BigRational::new(1337.into(), 100.into()),
-            }),
-            fee: BigRational::new(3.into(), 1000.into()),
-            cost: CostModel {
-                amount: U256::from(3),
-                token: native_token,
-            },
-            mandatory: true,
-        };
         let model = BatchAuctionModel {
             tokens: btreemap! {
                 buy_token => TokenInfoModel {
@@ -643,11 +580,6 @@ mod tests {
                 }
             },
             orders: btreemap! { 0 => order_model },
-            amms: btreemap! {
-                0 => constant_product_pool_model,
-                1 => weighted_product_pool_model,
-                2 => stable_pool_model,
-            },
             metadata: Some(MetadataModel {
                 environment: Some(String::from("Such Meta")),
             }),
@@ -691,58 +623,6 @@ mod tests {
                 "amount": "1",
                 "token": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
               },
-            },
-          },
-          "amms": {
-            "0": {
-              "kind": "ConstantProduct",
-              "reserves": {
-                "0x000000000000000000000000000000000000a866": "200",
-                "0x0000000000000000000000000000000000000539": "100"
-              },
-              "fee": "0.003",
-              "cost": {
-                "amount": "3",
-                "token": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-              },
-              "mandatory": false,
-            },
-            "1": {
-              "kind": "WeightedProduct",
-              "reserves": {
-                "0x000000000000000000000000000000000000a866": {
-                    "balance": "808",
-                    "weight": "0.2"
-                },
-                "0x0000000000000000000000000000000000000539": {
-                    "balance": "64",
-                    "weight": "0.8"
-                },
-              },
-              "fee": "0.002",
-              "cost": {
-                "amount": "2",
-                "token": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-              },
-              "mandatory": true,
-            },
-            "2": {
-              "kind": "Stable",
-              "reserves": {
-                "0x000000000000000000000000000000000000a866": "1000",
-                "0x0000000000000000000000000000000000000539": "1001000000",
-              },
-              "scaling_rates": {
-                "0x000000000000000000000000000000000000a866": "1",
-                "0x0000000000000000000000000000000000000539": "1000000",
-              },
-              "amplification_parameter": "13.37",
-              "fee": "0.003",
-              "cost": {
-                "amount": "3",
-                "token": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-              },
-              "mandatory": true,
             },
           },
           "metadata": {

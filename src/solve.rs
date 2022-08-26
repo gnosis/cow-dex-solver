@@ -51,7 +51,7 @@ pub async fn solve(
     }
 
     let mut orders: Vec<(usize, OrderModel)> = orders.into_iter().map(|(i, y)| (i, y)).collect();
-    // Filter out zero fee orders, as CowDexSolver is not good at matching liquidity orders. 
+    // Filter out zero fee orders, as CowDexSolver is not good at matching liquidity orders.
     // Also they increase the revert risk, as Market Maker orders - at least the ones from zeroEx - can timing out and then cause simulation errors.
     orders = orders
         .into_iter()
@@ -253,7 +253,7 @@ fn build_payload_for_swap(
 }
 
 fn is_zero_fee_order(order: OrderModel) -> bool {
-    return order.fee.amount == U256::zero();
+    order.fee.amount == U256::zero()
 }
 
 fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -> Result<bool> {

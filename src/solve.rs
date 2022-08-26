@@ -51,6 +51,12 @@ pub async fn solve(
     }
 
     let mut orders: Vec<(usize, OrderModel)> = orders.into_iter().map(|(i, y)| (i, y)).collect();
+    // Filter out zero fee orders, as CowDexSolver is not good at matching them. 
+    // Also they increase the revert risk, as Market Maker orders - at least the ones from zero - are often timing out and then cause simulation errors.
+    orders = orders
+        .into_iter()
+        .filter(|(_, order)| !is_zero_fee_order(order.clone()))
+        .collect();
     // For simplicity, only solve for up to 10 orders
     if orders.len() > 4usize {
         orders = orders
@@ -244,6 +250,10 @@ fn build_payload_for_swap(
         }
     }
     Ok(swap_interaction_data)
+}
+
+fn is_zero_fee_order(order: OrderModel) -> bool {
+    return order.fee.amount == U256::zero();
 }
 
 fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -> Result<bool> {

@@ -1,5 +1,6 @@
 use crate::models::batch_auction_model::BatchAuctionModel;
 use crate::models::batch_auction_model::SettledBatchAuctionModel;
+use crate::slippage::SlippageCalculator;
 use crate::solve;
 use anyhow::Result;
 use hex::{FromHex, FromHexError};
@@ -66,9 +67,11 @@ pub fn convert_get_solve_error_to_reply(err: anyhow::Error) -> WithStatus<Json> 
     with_status(internal_error(err), StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-pub fn get_solve() -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-    get_solve_request().and_then(move |model| async move {
-        let result = solve::solve(model).await;
+pub fn get_solve(slippage_calculator: SlippageCalculator) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+    get_solve_request().and_then(move |model| {
+        let slippage_calculator = slippage_calculator.clone();
+        async move {
+        let result = solve::solve(model, slippage_calculator).await;
         Result::<_, Infallible>::Ok(get_solve_response(result))
-    })
+    }})
 }

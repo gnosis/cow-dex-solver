@@ -1,5 +1,5 @@
 mod paraswap_solver;
-pub mod solver_utils;
+mod solver_utils;
 pub mod zeroex_solver;
 use crate::models::batch_auction_model::ApprovalModel;
 use crate::models::batch_auction_model::ExecutedOrderModel;
@@ -9,6 +9,9 @@ use crate::models::batch_auction_model::OrderModel;
 use crate::models::batch_auction_model::SettledBatchAuctionModel;
 use crate::models::batch_auction_model::TokenAmount;
 use crate::models::batch_auction_model::{BatchAuctionModel, TokenInfoModel};
+use crate::slippage::RelativeSlippage;
+use crate::slippage::SlippageCalculator;
+use crate::slippage::SlippageContext;
 use crate::solve::paraswap_solver::ParaswapSolver;
 use crate::token_list::get_buffer_tradable_token_list;
 use crate::token_list::BufferTradingTokenList;
@@ -16,7 +19,6 @@ use crate::token_list::Token;
 
 use self::paraswap_solver::get_sub_trades_from_paraswap_price_response;
 use crate::solve::paraswap_solver::api::Root;
-use crate::solve::solver_utils::Slippage;
 use crate::solve::zeroex_solver::api::SwapQuery;
 use crate::solve::zeroex_solver::api::SwapResponse;
 use crate::solve::zeroex_solver::ZeroExSolver;
@@ -34,16 +36,26 @@ lazy_static! {
     pub static ref THOUSAND: U256 = U256::from_dec_str("1000").unwrap();
 }
 
+const FALLBACK_SLIPPAGE: RelativeSlippage = RelativeSlippage(0.001);
+
 pub async fn solve(
     BatchAuctionModel {
         orders, mut tokens, ..
     }: BatchAuctionModel,
+    slippage_calculator: SlippageCalculator
 ) -> Result<SettledBatchAuctionModel> {
     tracing::info!(
         "Before filtering: Solving instance with the orders {:?} and the tokens: {:?}",
         orders,
         tokens
     );
+    let external_prices: HashMap<_,_> = tokens.iter().filter_map(|(address, model)| {
+        Some((*address, model.external_price?))
+    }).collect();
+    let slippage_context = SlippageContext {
+        prices: &external_prices,
+        calculator: &slippage_calculator
+    };
 
     let api_key = env::var("ZEROEX_API_KEY").map(Some).unwrap_or(None);
     if orders.is_empty() {
@@ -53,16 +65,10 @@ pub async fn solve(
     let mut orders: Vec<(usize, OrderModel)> = orders.into_iter().map(|(i, y)| (i, y)).collect();
     // Filter out zero fee orders, as CowDexSolver is not good at matching liquidity orders.
     // Also they increase the revert risk, as Market Maker orders - at least the ones from zeroEx - can timing out and then cause simulation errors.
-    orders = orders
-        .into_iter()
-        .filter(|(_, order)| !is_zero_fee_order(order.clone()))
-        .collect();
-    // For simplicity, only solve for up to 10 orders
+    orders.retain(|(_, order)| !is_zero_fee_order(order.clone()));
+    // For simplicity, only solve for up to 4 orders
     if orders.len() > 4usize {
-        orders = orders
-            .into_iter()
-            .filter(|(_, order)| is_market_order(&tokens, order.clone()).unwrap_or(false))
-            .collect();
+        orders.retain(|(_, order)| is_market_order(&tokens, order.clone()).unwrap_or(false));
     }
     orders.truncate(10);
 
@@ -115,7 +121,7 @@ pub async fn solve(
 
             // 3rd step: Get trades from zeroEx of left-over amounts
             let swap_results =
-                match get_swaps_for_left_over_amounts(updated_traded_amounts, api_key).await {
+                match get_swaps_for_left_over_amounts(updated_traded_amounts, &slippage_context, api_key).await {
                     Ok(swap_results) => swap_results,
                     Err(err) => {
                         tracing::debug!(
@@ -130,7 +136,7 @@ pub async fn solve(
         false => {
             tracing::info!("Falling back to normal zeroEx solver");
 
-            let zero_ex_results = match get_swaps_for_orders_from_zeroex(orders, api_key).await {
+            let zero_ex_results = match get_swaps_for_orders_from_zeroex(orders, &slippage_context, api_key).await {
                 Ok(zero_ex_results) => zero_ex_results,
                 Err(err) => {
                     tracing::debug!("Error while calling zeroEx api in fallback mode: {:?}", err);
@@ -279,12 +285,14 @@ fn is_market_order(tokens: &BTreeMap<H160, TokenInfoModel>, order: OrderModel) -
 
 async fn get_swaps_for_orders_from_zeroex(
     orders: Vec<(usize, OrderModel)>,
+    slippage_context: &SlippageContext<'_>,
     api_key: Option<String>,
 ) -> Result<Vec<((usize, OrderModel), (SwapQuery, SwapResponse))>> {
     let zeroex_futures = orders
         .into_iter()
         .filter(|(_, x)| !x.is_liquidity_order)
         .map(|(index, order)| {
+            let slippage =  slippage_context.relative_for_order(&order).unwrap_or(FALLBACK_SLIPPAGE);
             let cloned_api_key = api_key.clone();
             async move {
                 let client = reqwest::ClientBuilder::new()
@@ -301,7 +309,7 @@ async fn get_swaps_for_orders_from_zeroex(
                         buy_token: order.buy_token,
                         sell_amount: Some(order.sell_amount),
                         buy_amount: None,
-                        slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+                        slippage_percentage: slippage.as_percentage(),
                         skip_validation: Some(true),
                     },
                     false => SwapQuery {
@@ -309,7 +317,7 @@ async fn get_swaps_for_orders_from_zeroex(
                         buy_token: order.buy_token,
                         sell_amount: None,
                         buy_amount: Some(order.buy_amount),
-                        slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+                        slippage_percentage: slippage.as_percentage(),
                         skip_validation: Some(true),
                     },
                 };
@@ -343,6 +351,7 @@ async fn get_swaps_for_orders_from_zeroex(
 
 async fn get_swaps_for_left_over_amounts(
     updated_traded_amounts: HashMap<(H160, H160), TradeAmount>,
+    slippage_context: &SlippageContext<'_>,
     api_key: Option<String>,
 ) -> Result<Vec<(SwapQuery, SwapResponse)>> {
     let zeroex_futures = updated_traded_amounts
@@ -364,7 +373,7 @@ async fn get_swaps_for_left_over_amounts(
                     buy_token: dest_token,
                     sell_amount: Some(trade_amount.sell_amount),
                     buy_amount: None,
-                    slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+                    slippage_percentage: slippage_context.relative(src_token, trade_amount.sell_amount).unwrap_or(FALLBACK_SLIPPAGE).as_percentage(),
                     skip_validation: Some(true),
                 };
                 (
@@ -666,7 +675,7 @@ mod tests {
             buy_token: usdc,
             sell_amount: Some(U256::MAX),
             buy_amount: None,
-            slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+            slippage_percentage: 0.1,
             skip_validation: Some(true),
         };
         let swap = SwapResponse {
@@ -716,7 +725,7 @@ mod tests {
             buy_token: usdc,
             sell_amount: Some(U256::MAX),
             buy_amount: None,
-            slippage_percentage: Slippage::number_from_basis_points(10u16).unwrap(),
+            slippage_percentage: 0.1,
             skip_validation: Some(true),
         };
         let swap = SwapResponse {
@@ -1068,7 +1077,7 @@ mod tests {
                 (3, dai_gno_order),
             ])),
             ..Default::default()
-        })
+        }, SlippageCalculator::default())
         .await
         .unwrap();
 
@@ -1147,7 +1156,7 @@ mod tests {
                 (2, dai_gno_order),
             ])),
             ..Default::default()
-        })
+        }, SlippageCalculator::default())
         .await
         .unwrap();
 
@@ -1227,7 +1236,7 @@ mod tests {
                 (2, dai_gno_order),
             ])),
             ..Default::default()
-        })
+        }, SlippageCalculator::default())
         .await
         .unwrap();
 
@@ -1279,7 +1288,7 @@ mod tests {
                 (2, free_weth_order),
             ])),
             ..Default::default()
-        })
+        }, SlippageCalculator::default())
         .await
         .unwrap();
 

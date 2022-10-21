@@ -4,7 +4,9 @@ use warp::{hyper::StatusCode, Filter, Rejection, Reply};
 
 use crate::slippage::SlippageCalculator;
 
-pub fn handle_all_routes(slippage_calculator: SlippageCalculator) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+pub fn handle_all_routes(
+    slippage_calculator: SlippageCalculator,
+) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     let solve = solve::get_solve(slippage_calculator);
     let cors = warp::cors()
         .allow_any_origin()

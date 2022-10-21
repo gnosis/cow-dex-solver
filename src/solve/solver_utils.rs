@@ -1,11 +1,9 @@
-use anyhow::{Result};
+use anyhow::Result;
 use serde::{
     de::{Deserializer, Error as _},
     Deserialize,
 };
-use std::{
-    borrow::Cow,
-};
+use std::borrow::Cow;
 
 pub fn deserialize_decimal_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
 where

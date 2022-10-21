@@ -42,19 +42,20 @@ pub async fn solve(
     BatchAuctionModel {
         orders, mut tokens, ..
     }: BatchAuctionModel,
-    slippage_calculator: SlippageCalculator
+    slippage_calculator: SlippageCalculator,
 ) -> Result<SettledBatchAuctionModel> {
     tracing::info!(
         "Before filtering: Solving instance with the orders {:?} and the tokens: {:?}",
         orders,
         tokens
     );
-    let external_prices: HashMap<_,_> = tokens.iter().filter_map(|(address, model)| {
-        Some((*address, model.external_price?))
-    }).collect();
+    let external_prices: HashMap<_, _> = tokens
+        .iter()
+        .filter_map(|(address, model)| Some((*address, model.external_price?)))
+        .collect();
     let slippage_context = SlippageContext {
         prices: &external_prices,
-        calculator: &slippage_calculator
+        calculator: &slippage_calculator,
     };
 
     let api_key = env::var("ZEROEX_API_KEY").map(Some).unwrap_or(None);
@@ -120,29 +121,38 @@ pub async fn solve(
             }
 
             // 3rd step: Get trades from zeroEx of left-over amounts
-            let swap_results =
-                match get_swaps_for_left_over_amounts(updated_traded_amounts, &slippage_context, api_key).await {
-                    Ok(swap_results) => swap_results,
-                    Err(err) => {
-                        tracing::debug!(
-                            "Error from zeroEx api for trading left over amounts: {:?}",
-                            err
-                        );
-                        return Ok(SettledBatchAuctionModel::default());
-                    }
-                };
+            let swap_results = match get_swaps_for_left_over_amounts(
+                updated_traded_amounts,
+                &slippage_context,
+                api_key,
+            )
+            .await
+            {
+                Ok(swap_results) => swap_results,
+                Err(err) => {
+                    tracing::debug!(
+                        "Error from zeroEx api for trading left over amounts: {:?}",
+                        err
+                    );
+                    return Ok(SettledBatchAuctionModel::default());
+                }
+            };
             ((matched_orders, swap_results), splitted_trade_amounts)
         }
         false => {
             tracing::info!("Falling back to normal zeroEx solver");
 
-            let zero_ex_results = match get_swaps_for_orders_from_zeroex(orders, &slippage_context, api_key).await {
-                Ok(zero_ex_results) => zero_ex_results,
-                Err(err) => {
-                    tracing::debug!("Error while calling zeroEx api in fallback mode: {:?}", err);
-                    return Ok(SettledBatchAuctionModel::default());
-                }
-            };
+            let zero_ex_results =
+                match get_swaps_for_orders_from_zeroex(orders, &slippage_context, api_key).await {
+                    Ok(zero_ex_results) => zero_ex_results,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Error while calling zeroEx api in fallback mode: {:?}",
+                            err
+                        );
+                        return Ok(SettledBatchAuctionModel::default());
+                    }
+                };
             (zero_ex_results.into_iter().unzip(), HashMap::new())
         }
     };
@@ -292,7 +302,9 @@ async fn get_swaps_for_orders_from_zeroex(
         .into_iter()
         .filter(|(_, x)| !x.is_liquidity_order)
         .map(|(index, order)| {
-            let slippage =  slippage_context.relative_for_order(&order).unwrap_or(FALLBACK_SLIPPAGE);
+            let slippage = slippage_context
+                .relative_for_order(&order)
+                .unwrap_or(FALLBACK_SLIPPAGE);
             let cloned_api_key = api_key.clone();
             async move {
                 let client = reqwest::ClientBuilder::new()
@@ -373,7 +385,10 @@ async fn get_swaps_for_left_over_amounts(
                     buy_token: dest_token,
                     sell_amount: Some(trade_amount.sell_amount),
                     buy_amount: None,
-                    slippage_percentage: slippage_context.relative(src_token, trade_amount.sell_amount).unwrap_or(FALLBACK_SLIPPAGE).as_percentage(),
+                    slippage_percentage: slippage_context
+                        .relative(src_token, trade_amount.sell_amount)
+                        .unwrap_or(FALLBACK_SLIPPAGE)
+                        .as_percentage(),
                     skip_validation: Some(true),
                 };
                 (
@@ -1054,30 +1069,33 @@ mod tests {
             },
         };
 
-        let solution = solve(BatchAuctionModel {
-            tokens: BTreeMap::from_iter(IntoIterator::into_iter([
-                (
-                    dai,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    gno,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-            ])),
-            orders: BTreeMap::from_iter(IntoIterator::into_iter([
-                (1, dai_gno_order.clone()),
-                (2, dai_gno_order.clone()),
-                (3, dai_gno_order),
-            ])),
-            ..Default::default()
-        }, SlippageCalculator::default())
+        let solution = solve(
+            BatchAuctionModel {
+                tokens: BTreeMap::from_iter(IntoIterator::into_iter([
+                    (
+                        dai,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        gno,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                ])),
+                orders: BTreeMap::from_iter(IntoIterator::into_iter([
+                    (1, dai_gno_order.clone()),
+                    (2, dai_gno_order.clone()),
+                    (3, dai_gno_order),
+                ])),
+                ..Default::default()
+            },
+            SlippageCalculator::default(),
+        )
         .await
         .unwrap();
 
@@ -1127,36 +1145,39 @@ mod tests {
                 token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
             },
         };
-        let solution = solve(BatchAuctionModel {
-            tokens: BTreeMap::from_iter(IntoIterator::into_iter([
-                (
-                    dai,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    gno,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    weth,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-            ])),
-            orders: BTreeMap::from_iter(IntoIterator::into_iter([
-                (1, gno_weth_order),
-                (2, dai_gno_order),
-            ])),
-            ..Default::default()
-        }, SlippageCalculator::default())
+        let solution = solve(
+            BatchAuctionModel {
+                tokens: BTreeMap::from_iter(IntoIterator::into_iter([
+                    (
+                        dai,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        gno,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        weth,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                ])),
+                orders: BTreeMap::from_iter(IntoIterator::into_iter([
+                    (1, gno_weth_order),
+                    (2, dai_gno_order),
+                ])),
+                ..Default::default()
+            },
+            SlippageCalculator::default(),
+        )
         .await
         .unwrap();
 
@@ -1207,36 +1228,39 @@ mod tests {
                 token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
             },
         };
-        let solution = solve(BatchAuctionModel {
-            tokens: BTreeMap::from_iter(IntoIterator::into_iter([
-                (
-                    dai,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    gno,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    bal,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-            ])),
-            orders: BTreeMap::from_iter(IntoIterator::into_iter([
-                (1, bal_dai_order),
-                (2, dai_gno_order),
-            ])),
-            ..Default::default()
-        }, SlippageCalculator::default())
+        let solution = solve(
+            BatchAuctionModel {
+                tokens: BTreeMap::from_iter(IntoIterator::into_iter([
+                    (
+                        dai,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        gno,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        bal,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                ])),
+                orders: BTreeMap::from_iter(IntoIterator::into_iter([
+                    (1, bal_dai_order),
+                    (2, dai_gno_order),
+                ])),
+                ..Default::default()
+            },
+            SlippageCalculator::default(),
+        )
         .await
         .unwrap();
 
@@ -1266,29 +1290,32 @@ mod tests {
                 token: "6b175474e89094c44da98b954eedeac495271d0f".parse().unwrap(),
             },
         };
-        let solution = solve(BatchAuctionModel {
-            tokens: BTreeMap::from_iter(IntoIterator::into_iter([
-                (
-                    free,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    weth,
-                    TokenInfoModel {
-                        decimals: Some(18u8),
-                        ..Default::default()
-                    },
-                ),
-            ])),
-            orders: BTreeMap::from_iter(IntoIterator::into_iter([
-                (1, free_weth_order.clone()),
-                (2, free_weth_order),
-            ])),
-            ..Default::default()
-        }, SlippageCalculator::default())
+        let solution = solve(
+            BatchAuctionModel {
+                tokens: BTreeMap::from_iter(IntoIterator::into_iter([
+                    (
+                        free,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        weth,
+                        TokenInfoModel {
+                            decimals: Some(18u8),
+                            ..Default::default()
+                        },
+                    ),
+                ])),
+                orders: BTreeMap::from_iter(IntoIterator::into_iter([
+                    (1, free_weth_order.clone()),
+                    (2, free_weth_order),
+                ])),
+                ..Default::default()
+            },
+            SlippageCalculator::default(),
+        )
         .await
         .unwrap();
 

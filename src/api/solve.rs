@@ -67,11 +67,14 @@ pub fn convert_get_solve_error_to_reply(err: anyhow::Error) -> WithStatus<Json> 
     with_status(internal_error(err), StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-pub fn get_solve(slippage_calculator: SlippageCalculator) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+pub fn get_solve(
+    slippage_calculator: SlippageCalculator,
+) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     get_solve_request().and_then(move |model| {
         let slippage_calculator = slippage_calculator.clone();
         async move {
-        let result = solve::solve(model, slippage_calculator).await;
-        Result::<_, Infallible>::Ok(get_solve_response(result))
-    }})
+            let result = solve::solve(model, slippage_calculator).await;
+            Result::<_, Infallible>::Ok(get_solve_response(result))
+        }
+    })
 }

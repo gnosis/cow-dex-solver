@@ -10,8 +10,8 @@ extern crate serde_derive;
 #[macro_use]
 extern crate lazy_static;
 
-use std::net::SocketAddr;
 use slippage::SlippageCalculator;
+use std::net::SocketAddr;
 use tokio::{task, task::JoinHandle};
 
 pub fn serve_task(address: SocketAddr, slippage_calculator: SlippageCalculator) -> JoinHandle<()> {

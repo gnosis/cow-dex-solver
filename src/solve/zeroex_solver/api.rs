@@ -4,7 +4,7 @@
 //! <https://0x.org/docs/api#request-1>
 //! <https://api.0x.org/>
 
-use crate::solve::solver_utils::{deserialize_decimal_f64};
+use crate::solve::solver_utils::deserialize_decimal_f64;
 use crate::utils::u256_decimal;
 use anyhow::Result;
 use derivative::Derivative;

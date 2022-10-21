@@ -3,11 +3,7 @@
 use anyhow::{Context as _, Result};
 use ethcontract::{H160, U256};
 use num::{BigInt, BigRational, Integer as _, ToPrimitive as _};
-use std::{
-    borrow::Cow,
-    cmp,
-    collections::HashMap,
-};
+use std::{borrow::Cow, cmp, collections::HashMap};
 
 use crate::{models::batch_auction_model::OrderModel, utils::conversions};
 
@@ -105,8 +101,9 @@ impl SlippageCalculator {
     ) -> Result<(Cow<BigRational>, BigInt)> {
         let relative = if let Some(max_absolute_native_token) = self.absolute.clone() {
             let price = price.context("missing token price")?;
-            let max_absolute_slippage =
-                BigRational::new(max_absolute_native_token, 1.into()) / BigRational::from_float(*price).context("price cannot be converted into rational")?;
+            let max_absolute_slippage = BigRational::new(max_absolute_native_token, 1.into())
+                / BigRational::from_float(*price)
+                    .context("price cannot be converted into rational")?;
 
             let max_relative_slippage_respecting_absolute_limit = max_absolute_slippage / &amount;
 
@@ -190,11 +187,10 @@ impl RelativeSlippage {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-        /// Address for the `WETH` token.
+    /// Address for the `WETH` token.
     pub const WETH: H160 = H160(hex_literal::hex!(
         "c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
     ));
@@ -212,7 +208,7 @@ mod tests {
     #[test]
     fn limits_max_slippage() {
         let calculator = SlippageCalculator::from_bps(10, Some(U256::exp10(17)));
-        let prices =  maplit::hashmap! {
+        let prices = maplit::hashmap! {
             WETH => 1.0,
             GNO => U256::exp10(9).to_f64_lossy(),
             USDC => 0.002,
@@ -234,11 +230,7 @@ mod tests {
     fn errors_on_missing_token_price() {
         let calculator = SlippageCalculator::from_bps(10, Some(1_000.into()));
         assert!(calculator
-            .compute(
-                &maplit::hashmap! { WETH => 1.0, },
-                USDC,
-                1_000_000.into(),
-            )
+            .compute(&maplit::hashmap! { WETH => 1.0, }, USDC, 1_000_000.into(),)
             .is_err());
     }
 }

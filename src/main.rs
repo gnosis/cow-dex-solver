@@ -27,7 +27,11 @@ async fn main() {
     let args = Arguments::from_args();
     initialize(args.log_filter.as_str());
     tracing::info!("running data-server with {:#?}", args);
-    let slippage_calculator = SlippageCalculator::from_bps(args.relative_slippage_bps, args.absolute_slippage_in_native_token.map(|value| U256::from_f64_lossy(value * 1e18)));
+    let slippage_calculator = SlippageCalculator::from_bps(
+        args.relative_slippage_bps,
+        args.absolute_slippage_in_native_token
+            .map(|value| U256::from_f64_lossy(value * 1e18)),
+    );
     let serve_task = serve_task(args.bind_address, slippage_calculator);
     tokio::select! {
         result = serve_task => tracing::error!(?result, "serve task exited"),

@@ -4,7 +4,7 @@
 //! <https://0x.org/docs/api#request-1>
 //! <https://api.0x.org/>
 
-use crate::solve::solver_utils::{deserialize_decimal_f64, Slippage};
+use crate::solve::solver_utils::deserialize_decimal_f64;
 use crate::utils::u256_decimal;
 use anyhow::Result;
 use derivative::Derivative;
@@ -34,7 +34,7 @@ pub struct SwapQuery {
     /// Amount of a token to sell, set in atoms.
     pub buy_amount: Option<U256>,
     /// Limit of price slippage you are willing to accept.
-    pub slippage_percentage: Slippage,
+    pub slippage_percentage: f64,
     /// Flag to disable checks of the required quantities.
     pub skip_validation: Option<bool>,
 }

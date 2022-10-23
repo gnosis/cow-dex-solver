@@ -444,7 +444,6 @@ pub struct ExecutionPlanCoordinatesModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solve::solver_utils::Slippage;
     use maplit::{btreemap, hashset};
     use num::rational::Ratio;
     use serde_json::json;
@@ -713,7 +712,7 @@ mod tests {
             buy_token,
             sell_amount: None,
             buy_amount: None,
-            slippage_percentage: Slippage::number_from_basis_points(3).unwrap(),
+            slippage_percentage: 0.0003,
             skip_validation: None,
         };
         let swap = SwapResponse {
@@ -837,7 +836,7 @@ mod tests {
             buy_token,
             sell_amount: None,
             buy_amount: None,
-            slippage_percentage: Slippage::number_from_basis_points(3).unwrap(),
+            slippage_percentage: 0.0003,
             skip_validation: None,
         };
         let sell_amount = U256::from_dec_str("4").unwrap();
@@ -885,7 +884,7 @@ mod tests {
             buy_token,
             sell_amount: None,
             buy_amount: None,
-            slippage_percentage: Slippage::number_from_basis_points(3).unwrap(),
+            slippage_percentage: 0.0003,
             skip_validation: None,
         };
         let sell_amount = U256::from_dec_str("4").unwrap();
@@ -928,7 +927,7 @@ mod tests {
             buy_token,
             sell_amount: None,
             buy_amount: None,
-            slippage_percentage: Slippage::number_from_basis_points(3).unwrap(),
+            slippage_percentage: 0.0003,
             skip_validation: None,
         };
         let sell_amount = U256::from_dec_str("4").unwrap();
@@ -976,7 +975,7 @@ mod tests {
             buy_token,
             sell_amount: None,
             buy_amount: None,
-            slippage_percentage: Slippage::number_from_basis_points(3).unwrap(),
+            slippage_percentage: 0.0003,
             skip_validation: None,
         };
         let sell_amount = U256::from_dec_str("2").unwrap();

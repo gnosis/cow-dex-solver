@@ -67,10 +67,13 @@ pub async fn solve(
     // Filter out zero fee orders, as CowDexSolver is not good at matching liquidity orders.
     // Also they increase the revert risk, as Market Maker orders - at least the ones from zeroEx - can timing out and then cause simulation errors.
     orders.retain(|(_, order)| !is_zero_fee_order(order.clone()));
-    // For simplicity, only solve for up to 4 orders
+
+    // If there are many orders in the batch, we filter the ones that don't have a promising limit price (according to external prices)
     if orders.len() > 4usize {
         orders.retain(|(_, order)| is_market_order(&tokens, order.clone()).unwrap_or(false));
     }
+
+    // For simplicity, only solve for up to 10 orders
     orders.truncate(10);
 
     tracing::info!(

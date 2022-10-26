@@ -324,7 +324,8 @@ async fn get_swaps_for_orders_from_zeroex(
                         buy_token: order.buy_token,
                         sell_amount: Some(order.sell_amount),
                         buy_amount: None,
-                        slippage_percentage: slippage.as_percentage(),
+                        // 0x slippage is a factor, not percentage (the name is misleading: https://docs.0x.org/0x-api-swap/guides/troubleshooting-0x-api-swaps#slippage-tolerance)
+                        slippage_percentage: slippage.as_factor(),
                         skip_validation: Some(true),
                     },
                     false => SwapQuery {
@@ -332,7 +333,8 @@ async fn get_swaps_for_orders_from_zeroex(
                         buy_token: order.buy_token,
                         sell_amount: None,
                         buy_amount: Some(order.buy_amount),
-                        slippage_percentage: slippage.as_percentage(),
+                        // 0x slippage is a factor, not percentage (the name is misleading: https://docs.0x.org/0x-api-swap/guides/troubleshooting-0x-api-swaps#slippage-tolerance)
+                        slippage_percentage: slippage.as_factor(),
                         skip_validation: Some(true),
                     },
                 };
@@ -388,10 +390,11 @@ async fn get_swaps_for_left_over_amounts(
                     buy_token: dest_token,
                     sell_amount: Some(trade_amount.sell_amount),
                     buy_amount: None,
+                    // 0x slippage is a factor, not percentage (the name is misleading: https://docs.0x.org/0x-api-swap/guides/troubleshooting-0x-api-swaps#slippage-tolerance)
                     slippage_percentage: slippage_context
                         .relative(src_token, trade_amount.sell_amount)
                         .unwrap_or(FALLBACK_SLIPPAGE)
-                        .as_percentage(),
+                        .as_factor(),
                     skip_validation: Some(true),
                 };
                 (

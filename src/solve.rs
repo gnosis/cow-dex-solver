@@ -641,11 +641,9 @@ fn one_token_is_already_in_settlement(
     swap_info: &(SwapQuery, SwapResponse),
 ) -> u64 {
     let tokens: Vec<H160> = solution.prices.keys().copied().collect();
-    if tokens.contains(&swap_info.0.sell_token) || tokens.contains(&swap_info.0.buy_token) {
-        1u64
-    } else {
-        0u64
-    }
+    let already_in_settlement =
+        tokens.contains(&swap_info.0.sell_token) || tokens.contains(&swap_info.0.buy_token);
+    u64::from(already_in_settlement)
 }
 fn overwrite_eth_with_weth_token(token: H160) -> H160 {
     if token.eq(&"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".parse().unwrap()) {

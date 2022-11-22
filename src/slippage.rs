@@ -2,7 +2,7 @@
 
 use anyhow::{Context as _, Result};
 use ethcontract::{H160, U256};
-use num::{BigInt, BigRational, Integer as _, ToPrimitive as _};
+use num::{BigInt, BigRational, CheckedDiv as _, Integer as _, ToPrimitive as _};
 use std::{borrow::Cow, cmp, collections::HashMap};
 
 use crate::{models::batch_auction_model::OrderModel, utils::conversions};
@@ -105,7 +105,9 @@ impl SlippageCalculator {
                 / BigRational::from_float(*price)
                     .context("price cannot be converted into rational")?;
 
-            let max_relative_slippage_respecting_absolute_limit = max_absolute_slippage / &amount;
+            let max_relative_slippage_respecting_absolute_limit = max_absolute_slippage
+                .checked_div(&amount.clone().into())
+                .context("slippage computation divides by 0")?;
 
             cmp::min(
                 Cow::Owned(max_relative_slippage_respecting_absolute_limit),

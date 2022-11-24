@@ -443,7 +443,7 @@ mod tests {
                 },
             ],
         };
-        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":{"position":"0","sequence":"0","internal":"true"},"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
+        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":{"position":0,"sequence":0,"internal":true},"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
         assert_eq!(
             serde_json::to_string(&interaction_data).unwrap(),
             expected_string
@@ -453,7 +453,7 @@ mod tests {
             interaction_data
         );
         interaction_data.exec_plan = Default::default();
-        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":{"position":"0","sequence":"0","internal":"false"},"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
+        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":{"position":0,"sequence":0,"internal":false},"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
         assert_eq!(
             serde_json::to_string(&interaction_data).unwrap(),
             expected_string

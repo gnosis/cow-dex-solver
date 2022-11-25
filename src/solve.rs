@@ -190,12 +190,12 @@ pub async fn solve(
         })
     }
 
-    // 4a step: Update execution plan coordinates once we have all plans prepared
+    // 5th step: Update execution plan coordinates once we have all plans prepared
     for (position, plan) in solution.interaction_data.iter_mut().enumerate() {
         plan.exec_plan.coordinates.position = position as u32;
     }
 
-    // 5th step: Insert traded orders into settlement
+    // 6th step: Insert traded orders into settlement
     for (i, order) in matched_orders {
         solution.orders.insert(
             i,

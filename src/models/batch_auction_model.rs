@@ -149,7 +149,7 @@ pub struct InteractionData {
     #[derivative(Debug(format_with = "debug_bytes"))]
     #[serde(with = "bytes_hex")]
     pub call_data: Vec<u8>,
-    pub exec_plan: Option<ExecutionPlan>,
+    pub exec_plan: ExecutionPlan,
     #[serde(default)]
 
     /// The input amounts into the AMM interaction - i.e. the amount of tokens
@@ -181,42 +181,17 @@ pub fn debug_bytes(
     formatter.write_fmt(format_args!("0x{}", hex::encode(bytes.as_ref())))
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum ExecutionPlan {
-    /// The interaction should **not** be included in the settlement as
-    /// internal buffers will be used instead.
-    #[serde(with = "execution_plan_internal")]
-    Internal,
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+pub struct ExecutionPlan {
+    #[serde(flatten)]
+    pub coordinates: ExecutionPlanCoordinatesModel,
+    pub internal: bool,
 }
 
-/// A module for implementing `serde` (de)serialization for the execution plan
-/// enum.
-///
-/// This is a work-around for untagged enum serialization not supporting empty
-/// variants <https://github.com/serde-rs/serde/issues/1560>.
-mod execution_plan_internal {
-    use super::*;
-
-    #[derive(Deserialize, Serialize)]
-    enum Kind {
-        #[serde(rename = "internal")]
-        Internal,
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<(), D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Kind::deserialize(deserializer)?;
-        Ok(())
-    }
-    pub fn serialize<S>(serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        Kind::serialize(&Kind::Internal, serializer)
-    }
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ExecutionPlanCoordinatesModel {
+    pub sequence: u32,
+    pub position: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -435,12 +410,6 @@ impl UpdatedAmmModel {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-pub struct ExecutionPlanCoordinatesModel {
-    pub sequence: u32,
-    pub position: u32,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,7 +424,10 @@ mod tests {
             target: "ffffffffffffffffffffffffffffffffffffffff".parse().unwrap(),
             value: U256::from_dec_str("1").unwrap(),
             call_data: vec![1, 2],
-            exec_plan: Some(ExecutionPlan::Internal),
+            exec_plan: ExecutionPlan {
+                coordinates: Default::default(),
+                internal: true,
+            },
             inputs: vec![TokenAmount {
                 token: H160([1; 20]),
                 amount: 9999.into(),
@@ -471,7 +443,7 @@ mod tests {
                 },
             ],
         };
-        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":"internal","inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
+        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":{"sequence":0,"position":0,"internal":true},"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
         assert_eq!(
             serde_json::to_string(&interaction_data).unwrap(),
             expected_string
@@ -480,8 +452,8 @@ mod tests {
             serde_json::from_str::<InteractionData>(expected_string).unwrap(),
             interaction_data
         );
-        interaction_data.exec_plan = None;
-        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":null,"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
+        interaction_data.exec_plan = Default::default();
+        let expected_string = r#"{"target":"0xffffffffffffffffffffffffffffffffffffffff","value":"0x1","call_data":"0x0102","exec_plan":{"sequence":0,"position":0,"internal":false},"inputs":[{"amount":"9999","token":"0x0101010101010101010101010101010101010101"}],"outputs":[{"amount":"2000","token":"0x0202020202020202020202020202020202020202"},{"amount":"3000","token":"0x0303030303030303030303030303030303030303"}]}"#;
         assert_eq!(
             serde_json::to_string(&interaction_data).unwrap(),
             expected_string

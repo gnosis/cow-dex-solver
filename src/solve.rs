@@ -3,7 +3,6 @@ mod solver_utils;
 pub mod zeroex_solver;
 use crate::models::batch_auction_model::ApprovalModel;
 use crate::models::batch_auction_model::ExecutedOrderModel;
-use crate::models::batch_auction_model::ExecutionPlan;
 use crate::models::batch_auction_model::InteractionData;
 use crate::models::batch_auction_model::OrderModel;
 use crate::models::batch_auction_model::SettledBatchAuctionModel;
@@ -191,7 +190,12 @@ pub async fn solve(
         })
     }
 
-    // 5th step: Insert traded orders into settlement
+    // 5th step: Update execution plan coordinates once we have all plans prepared
+    for (position, plan) in solution.interaction_data.iter_mut().enumerate() {
+        plan.exec_plan.coordinates.position = position as u32;
+    }
+
+    // 6th step: Insert traded orders into settlement
     for (i, order) in matched_orders {
         solution.orders.insert(
             i,
@@ -238,7 +242,7 @@ fn build_payload_for_swap(
             target: swap.to,
             value: swap.value,
             call_data: swap.data.0.clone(),
-            exec_plan: None,
+            exec_plan: Default::default(),
             inputs: vec![TokenAmount {
                 token: query.sell_token,
                 amount: swap.sell_amount,
@@ -254,7 +258,7 @@ fn build_payload_for_swap(
         && swap_tokens_are_tradable_buffer_tokens(query, tradable_buffer_token_list)
     {
         // Trade against internal buffer
-        swap_interaction_data.exec_plan = Some(ExecutionPlan::Internal);
+        swap_interaction_data.exec_plan.internal = true;
 
         // Adjust buffer balances
         if let Some(mut token_info) = tokens.get_mut(&query.buy_token) {
@@ -657,6 +661,7 @@ fn overwrite_eth_with_weth_token(token: H160) -> H160 {
 mod tests {
     use super::*;
     use crate::models::batch_auction_model::CostModel;
+    use crate::models::batch_auction_model::ExecutionPlan;
     use crate::models::batch_auction_model::FeeModel;
     use hex_literal::hex;
     use maplit::hashmap;
@@ -789,7 +794,10 @@ mod tests {
                 token: query.sell_token,
                 amount: swap.sell_amount,
             }],
-            exec_plan: Some(ExecutionPlan::Internal),
+            exec_plan: ExecutionPlan {
+                coordinates: Default::default(),
+                internal: true,
+            },
         };
         assert_eq!(swap_interaction_data, expected_swap_interaction_data);
 
@@ -806,7 +814,7 @@ mod tests {
             target: H160::zero(),
             value: U256::zero(),
             call_data: vec![0u8],
-            exec_plan: None,
+            exec_plan: Default::default(),
             outputs: vec![TokenAmount {
                 token: query.buy_token,
                 amount: swap.buy_amount,
@@ -830,7 +838,7 @@ mod tests {
             target: H160::zero(),
             value: U256::zero(),
             call_data: vec![0u8],
-            exec_plan: None,
+            exec_plan: Default::default(),
             outputs: vec![TokenAmount {
                 token: query.buy_token,
                 amount: swap.buy_amount,
@@ -874,7 +882,7 @@ mod tests {
             target: H160::zero(),
             value: U256::zero(),
             call_data: vec![0u8],
-            exec_plan: None,
+            exec_plan: Default::default(),
             outputs: vec![TokenAmount {
                 token: query.buy_token,
                 amount: swap.buy_amount,

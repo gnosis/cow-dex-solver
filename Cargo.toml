@@ -1,5 +1,6 @@
 [package]
 name = "cowdexsolver"
+version = "0.0.0" # The version number isn't tracked, contact us if you plan to depend on this package
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
